@@ -1,0 +1,6 @@
+{
+  "name": "SMART AI DATA ANALYST DASHBOARD",
+  "description": "Enterprise AI-Powered Data Analytics & Decision Support System with automated insights, statistical forecasting, multi-format document extraction, and Supabase integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
