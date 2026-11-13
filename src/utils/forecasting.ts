@@ -1,5 +1,6 @@
 export type ForecastMethod = 'linear' | 'moving_average' | 'exponential_smoothing';
 export type ForecastHorizon = '7d' | '30d' | '3m' | '6m' | '12m';
+export type ConfidenceLevel = 0.80 | 0.90 | 0.95 | 0.99;
 
 export interface DataPoint {
   date: string;
@@ -12,6 +13,8 @@ export interface ForecastResultPoint {
   forecast?: number;
   lowerBound?: number;
   upperBound?: number;
+  ciRange?: [number, number];
+  marginOfError?: number;
 }
 
 export interface ForecastEvaluation {
@@ -22,6 +25,12 @@ export interface ForecastEvaluation {
   trend: 'UPWARD' | 'DOWNWARD' | 'STABLE';
   growthPercentage: number;
   sampleSize: number;
+  confidenceLevel: number;
+  zScore: number;
+  meanProjected: number;
+  ciLower: number;
+  ciUpper: number;
+  averageMarginOfError: number;
 }
 
 export interface ForecastOutput {
@@ -29,6 +38,20 @@ export interface ForecastOutput {
   evaluation: ForecastEvaluation;
   horizonSteps: number;
   method: ForecastMethod;
+  confidenceLevel: ConfidenceLevel;
+}
+
+/**
+ * Returns Z-score corresponding to selected confidence level
+ */
+export function getZScore(confidenceLevel: ConfidenceLevel = 0.95): number {
+  switch (confidenceLevel) {
+    case 0.80: return 1.282;
+    case 0.90: return 1.645;
+    case 0.95: return 1.960;
+    case 0.99: return 2.576;
+    default: return 1.960;
+  }
 }
 
 /**
@@ -105,6 +128,15 @@ export function runLinearRegression(values: number[], steps: number): {
 } {
   const n = values.length;
   if (n === 0) return { fitted: [], forecasts: [], slope: 0, intercept: 0 };
+  if (n === 1) {
+    const val = values[0];
+    return {
+      fitted: [val],
+      forecasts: Array(steps).fill(val),
+      slope: 0,
+      intercept: val
+    };
+  }
 
   let sumX = 0;
   let sumY = 0;
@@ -144,6 +176,7 @@ export function runMovingAverage(values: number[], steps: number, windowSize: nu
   forecasts: number[];
 } {
   const n = values.length;
+  if (n === 0) return { fitted: [], forecasts: [] };
   const fitted: number[] = [];
   const window = Math.min(windowSize, Math.max(2, Math.floor(n / 2)));
 
@@ -168,7 +201,7 @@ export function runMovingAverage(values: number[], steps: number, windowSize: nu
 }
 
 /**
- * Simple Exponential Smoothing (Holt-like alpha weighting)
+ * Simple Exponential Smoothing
  */
 export function runExponentialSmoothing(values: number[], steps: number, alpha: number = 0.3): {
   fitted: number[];
@@ -184,7 +217,6 @@ export function runExponentialSmoothing(values: number[], steps: number, alpha: 
   }
 
   const lastFitted = fitted[fitted.length - 1];
-  // Calculate approximate drift/trend
   const drift = (values[n - 1] - values[0]) / Math.max(1, n);
   const forecasts: number[] = [];
   for (let s = 1; s <= steps; s++) {
@@ -195,16 +227,89 @@ export function runExponentialSmoothing(values: number[], steps: number, alpha: 
 }
 
 /**
- * Main forecasting pipeline with confidence interval calculation
+ * Validates whether string is an actual calendar date format (YYYY-MM-DD, DD/MM/YYYY, etc.)
+ */
+export function isValidCalendarDate(str: string): boolean {
+  if (!str || typeof str !== 'string') return false;
+  const trimmed = str.trim();
+  // Common calendar date patterns: YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY, or ISO timestamp
+  const isDatePattern =
+    /^\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?(?:T.*)?$/.test(trimmed) ||
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(trimmed);
+  if (!isDatePattern) return false;
+  return !isNaN(Date.parse(trimmed));
+}
+
+/**
+ * Safely parses and increments dates, avoiding RangeError on non-ISO dates
+ */
+function generateNextDateString(lastDateStr: string, stepIndex: number): string {
+  if (!lastDateStr) return `T+${stepIndex}`;
+  const trimmed = lastDateStr.trim();
+
+  // If it's a sequence ending with a number (e.g., "Periode 3", "Week 12", "Month 4", "Q3")
+  const numMatch = trimmed.match(/^(.*?)(\d+)$/);
+  if (numMatch && !isValidCalendarDate(trimmed)) {
+    const prefix = numMatch[1];
+    const num = parseInt(numMatch[2], 10);
+    return `${prefix}${num + stepIndex}`;
+  }
+
+  // If it's a valid calendar date
+  if (isValidCalendarDate(trimmed)) {
+    const timestamp = Date.parse(trimmed);
+    const d = new Date(timestamp);
+    d.setDate(d.getDate() + stepIndex);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  }
+
+  return `${trimmed} +${stepIndex}`;
+}
+
+/**
+ * Main forecasting pipeline with comprehensive Confidence Interval calculation
  */
 export function generateForecast(
   history: DataPoint[],
-  method: ForecastMethod,
-  horizon: ForecastHorizon
+  method: ForecastMethod = 'linear',
+  horizon: ForecastHorizon = '30d',
+  confidenceLevel: ConfidenceLevel = 0.95
 ): ForecastOutput {
-  const sorted = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const values = sorted.map(d => d.value);
+  if (!history || history.length === 0) {
+    return {
+      points: [],
+      evaluation: {
+        mae: 0,
+        rmse: 0,
+        mape: 0,
+        r2: 0,
+        trend: 'STABLE',
+        growthPercentage: 0,
+        sampleSize: 0,
+        confidenceLevel: 0.95,
+        zScore: 1.96,
+        meanProjected: 0,
+        ciLower: 0,
+        ciUpper: 0,
+        averageMarginOfError: 0
+      },
+      horizonSteps: getHorizonSteps(horizon),
+      method,
+      confidenceLevel
+    };
+  }
+
+  // Safe sort: if dates are valid calendar timestamps sort chronologically, otherwise preserve original order
+  const hasValidDates = history.every(d => isValidCalendarDate(d.date));
+  const sorted = hasValidDates
+    ? [...history].sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+    : [...history];
+
+  const values = sorted.map(d => (typeof d.value === 'number' && !isNaN(d.value) ? d.value : 0));
   const steps = getHorizonSteps(horizon);
+  const zScore = getZScore(confidenceLevel);
 
   let fitted: number[] = [];
   let futureVals: number[] = [];
@@ -230,39 +335,65 @@ export function generateForecast(
   const lastVal = values[values.length - 1] || 1;
   const lastForecast = futureVals[futureVals.length - 1] || lastVal;
   const growthPercentage = Math.round(((lastForecast - lastVal) / (Math.abs(lastVal) || 1)) * 1000) / 10;
-  
+
   let trend: 'UPWARD' | 'DOWNWARD' | 'STABLE' = 'STABLE';
   if (growthPercentage > 2) trend = 'UPWARD';
   else if (growthPercentage < -2) trend = 'DOWNWARD';
 
-  // Construct timeline points
-  const points: ForecastResultPoint[] = sorted.map((d, i) => ({
-    date: d.date,
-    historical: d.value,
-    forecast: Math.round(fitted[i] * 100) / 100,
-    lowerBound: Math.max(0, Math.round((fitted[i] - 1.96 * metrics.rmse) * 100) / 100),
-    upperBound: Math.round((fitted[i] + 1.96 * metrics.rmse) * 100) / 100
-  }));
+  // Base standard error of estimate (at least 2% of mean to avoid zero width when perfect fit)
+  const meanVal = values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
+  const standardError = Math.max(metrics.rmse, meanVal * 0.02);
 
-  // Generate future dates
-  const lastDate = new Date(sorted[sorted.length - 1]?.date || Date.now());
+  // Construct historical points
+  const points: ForecastResultPoint[] = sorted.map((d, i) => {
+    const fit = Math.round((fitted[i] ?? d.value) * 100) / 100;
+    const margin = Math.round(zScore * standardError * 100) / 100;
+    const lower = Math.max(0, Math.round((fit - margin) * 100) / 100);
+    const upper = Math.round((fit + margin) * 100) / 100;
+
+    return {
+      date: d.date,
+      historical: d.value,
+      forecast: fit,
+      lowerBound: lower,
+      upperBound: upper,
+      ciRange: [lower, upper],
+      marginOfError: margin
+    };
+  });
+
+  // Construct future projection points with widening confidence interval
+  const lastDateStr = sorted[sorted.length - 1]?.date || '';
+  let totalFutureMargin = 0;
+  let totalFutureForecast = 0;
+
   for (let s = 1; s <= steps; s++) {
-    const futureDate = new Date(lastDate);
-    futureDate.setDate(lastDate.getDate() + s);
-    const dateStr = futureDate.toISOString().split('T')[0];
-    const val = futureVals[s - 1];
+    const dateStr = generateNextDateString(lastDateStr, s);
+    const val = futureVals[s - 1] ?? lastVal;
 
-    // Uncertainty widens over time
-    const uncertaintyFactor = 1 + (s / steps) * 0.5;
-    const margin = 1.96 * metrics.rmse * uncertaintyFactor;
+    // Uncertainty widens over time as forecasting horizon extends: sqrt(s) expansion
+    const horizonExpansion = Math.sqrt(1 + (s / steps) * 1.5);
+    const margin = Math.round(zScore * standardError * horizonExpansion * 100) / 100;
+    const lower = Math.max(0, Math.round((val - margin) * 100) / 100);
+    const upper = Math.round((val + margin) * 100) / 100;
+
+    totalFutureMargin += margin;
+    totalFutureForecast += val;
 
     points.push({
       date: dateStr,
       forecast: Math.round(val * 100) / 100,
-      lowerBound: Math.max(0, Math.round((val - margin) * 100) / 100),
-      upperBound: Math.round((val + margin) * 100) / 100
+      lowerBound: lower,
+      upperBound: upper,
+      ciRange: [lower, upper],
+      marginOfError: margin
     });
   }
+
+  const avgFutureVal = steps > 0 ? totalFutureForecast / steps : 0;
+  const avgMargin = steps > 0 ? totalFutureMargin / steps : 0;
+  const ciLowerOverall = Math.max(0, Math.round((avgFutureVal - avgMargin) * 100) / 100);
+  const ciUpperOverall = Math.round((avgFutureVal + avgMargin) * 100) / 100;
 
   return {
     points,
@@ -270,9 +401,16 @@ export function generateForecast(
       ...metrics,
       trend,
       growthPercentage,
-      sampleSize: sorted.length
+      sampleSize: sorted.length,
+      confidenceLevel,
+      zScore,
+      meanProjected: Math.round(avgFutureVal * 100) / 100,
+      ciLower: ciLowerOverall,
+      ciUpper: ciUpperOverall,
+      averageMarginOfError: Math.round(avgMargin * 100) / 100
     },
     horizonSteps: steps,
-    method
+    method,
+    confidenceLevel
   };
 }

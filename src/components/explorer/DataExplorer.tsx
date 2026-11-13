@@ -10,8 +10,7 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
-  Database,
-  Info
+  Database
 } from 'lucide-react';
 
 export const DataExplorer: React.FC = () => {
@@ -41,9 +40,7 @@ export const DataExplorer: React.FC = () => {
         );
       } else {
         result = result.filter(row =>
-          Object.values(row).some(val =>
-            String(val ?? '').toLowerCase().includes(q)
-          )
+          Object.values(row).some(val => String(val ?? '').toLowerCase().includes(q))
         );
       }
     }
@@ -66,7 +63,7 @@ export const DataExplorer: React.FC = () => {
     }
 
     return result;
-  }, [rawData, searchTerm, sortColumn, sortDirection]);
+  }, [rawData, searchTerm, selectedColumnFilter, sortColumn, sortDirection]);
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
@@ -89,11 +86,11 @@ export const DataExplorer: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <TableProperties className="w-5 h-5 text-cyan-400" />
-            Data Explorer & Tabular Inspection
+          <h1 className="text-xl font-bold text-[var(--text-main)] flex items-center gap-2">
+            <TableProperties className="w-5 h-5 text-[var(--color-primary)]" />
+            <span>Data Explorer & Tabular Inspection</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
             Eksplorasi baris data interaktif, pencarian multi-kolom, pengurutan cerdas, dan profiling kolom.
           </p>
         </div>
@@ -101,48 +98,55 @@ export const DataExplorer: React.FC = () => {
         {/* Action Export Buttons */}
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => exportToCsv(filteredData, `${selectedDataset?.name || 'dataset'}_filtered.csv`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] text-xs font-semibold border border-[var(--border-color)] transition-theme cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5 text-cyan-400" />
-            Export CSV
+            <Download className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            <span>Export CSV</span>
           </button>
           <button
+            type="button"
             onClick={() => exportToExcel(filteredData, 'Data', `${selectedDataset?.name || 'dataset'}.xlsx`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
+            style={{ backgroundColor: 'var(--color-success)' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:opacity-90 text-[#FFFDF9] text-xs font-semibold transition-theme cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            Export Excel
+            <span>Export Excel</span>
           </button>
         </div>
       </div>
 
       {/* Dataset Profile Header Card */}
-      <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+      <div className="p-4 rounded-xl surface-card flex flex-wrap items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 font-bold">
+          <div
+            className="p-2 rounded-lg text-[var(--color-primary)]"
+            style={{ backgroundColor: 'var(--bg-primary-soft)' }}
+          >
             <Database className="w-4 h-4" />
           </div>
           <div>
-            <div className="font-bold text-slate-100">{selectedDataset?.name}</div>
-            <div className="text-slate-400 text-[11px]">
-              {rawData.length} Total Baris • {columns.length} Kolom • Status: Ready for Analysis
+            <div className="font-bold text-[var(--text-main)]">{selectedDataset?.name}</div>
+            <div className="text-[var(--text-secondary)] text-[11px] tabular-nums">
+              {rawData.length} Total Baris · {columns.length} Kolom · Siap Dianalisis
             </div>
           </div>
         </div>
 
         {/* Sheet Selector if multiple sheets */}
         {selectedDataset?.sheets && selectedDataset.sheets.length > 1 && (
-          <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-slate-400">Pilih Sheet:</span>
+          <div className="flex items-center gap-2 bg-[var(--bg-secondary)] px-3 py-1.5 rounded-lg border border-[var(--border-color)]">
+            <Layers className="w-3.5 h-3.5 text-[var(--accent-caramel)]" />
+            <span className="text-[var(--text-secondary)]">Pilih Sheet:</span>
             <select
+              aria-label="Pilih Sheet Dataset"
               value={activeSheet}
               onChange={(e) => setActiveSheet(e.target.value)}
-              className="bg-transparent text-cyan-300 font-bold focus:outline-none"
+              className="bg-transparent text-[var(--color-primary)] font-bold focus:outline-none cursor-pointer"
             >
               {selectedDataset.sheets.map(s => (
-                <option key={s.name} value={s.name} className="bg-slate-900 text-slate-200">
+                <option key={s.name} value={s.name}>
                   {s.name} ({s.data.length})
                 </option>
               ))}
@@ -152,39 +156,28 @@ export const DataExplorer: React.FC = () => {
       </div>
 
       {/* Column Profiling Bar */}
-      <div className="overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-800">
+      <div className="overflow-x-auto pb-2">
         <div className="flex items-center gap-3 min-w-max">
           {currentStats.columns.map(col => (
-            <div
-              key={col.name}
-              className="p-3 rounded-xl bg-slate-900/90 border border-slate-800/80 w-52 flex-shrink-0 text-xs space-y-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 truncate">{col.name}</span>
-                <span
-                  className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                    col.type === 'numeric'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : col.type === 'date'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : col.type === 'categorical'
-                      ? 'bg-purple-500/20 text-purple-300'
-                      : 'bg-slate-500/20 text-slate-300'
-                  }`}
-                >
+            <div key={col.name} className="p-3.5 rounded-xl surface-card w-52 shrink-0 text-xs space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-[var(--text-main)] truncate">{col.name}</span>
+                <span className="text-[10px] uppercase font-bold text-[var(--color-primary)] shrink-0">
                   {col.type}
                 </span>
               </div>
 
-              <div className="text-[10px] text-slate-400">
-                Unique: {col.uniqueCount} • Missing: {col.missingCount}
+              <div className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                Unique: {col.uniqueCount} · Missing: {col.missingCount}
               </div>
 
               {col.stats && (
-                <div className="pt-1 border-t border-slate-800 text-[10px] space-y-0.5 font-mono text-slate-300">
+                <div className="pt-1.5 border-t border-[var(--border-color)] text-[11px] space-y-0.5 font-mono tabular-nums text-[var(--text-secondary)]">
                   <div>Min: {col.stats.min.toLocaleString()}</div>
                   <div>Max: {col.stats.max.toLocaleString()}</div>
-                  <div className="text-cyan-400">Mean: {col.stats.mean.toLocaleString()}</div>
+                  <div className="text-[var(--color-primary)] font-semibold">
+                    Mean: {col.stats.mean.toLocaleString()}
+                  </div>
                 </div>
               )}
             </div>
@@ -196,32 +189,34 @@ export const DataExplorer: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
           <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-[var(--text-secondary)] absolute left-3 top-2.5" />
             <input
               type="text"
+              aria-label="Cari baris data"
               placeholder="Cari baris data apa saja..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              className="w-full pl-9 pr-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] text-xs text-[var(--text-main)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-caramel)]"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded-lg text-xs flex-shrink-0">
-            <Filter className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="flex items-center gap-1.5 bg-[var(--bg-card)] border border-[var(--border-color)] px-2.5 py-1.5 rounded-lg text-xs shrink-0">
+            <Filter className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <select
+              aria-label="Filter Berdasarkan Kolom"
               value={selectedColumnFilter}
               onChange={(e) => {
                 setSelectedColumnFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="bg-transparent text-slate-200 focus:outline-none text-xs"
+              className="bg-transparent text-[var(--text-main)] focus:outline-none text-xs cursor-pointer"
             >
-              <option value="ALL" className="bg-slate-900 text-slate-200">Semua Kolom</option>
+              <option value="ALL">Semua Kolom</option>
               {columns.map(col => (
-                <option key={col} value={col} className="bg-slate-900 text-slate-200">
+                <option key={col} value={col}>
                   Kolom: {col}
                 </option>
               ))}
@@ -229,15 +224,16 @@ export const DataExplorer: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-slate-400 self-end">
-          <span>Menampilkan {filteredData.length} baris hasil filter</span>
+        <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] self-end tabular-nums">
+          <span>Menampilkan {filteredData.length} baris</span>
           <select
+            aria-label="Jumlah Baris per Halaman"
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200"
+            className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg px-2.5 py-1 text-[var(--text-main)]"
           >
             <option value={10}>10 per hal</option>
             <option value={15}>15 per hal</option>
@@ -248,32 +244,32 @@ export const DataExplorer: React.FC = () => {
       </div>
 
       {/* Main Tabular View */}
-      <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/60 shadow-xl">
-        <table className="w-full text-left text-xs text-slate-300">
-          <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold sticky top-0 border-b border-slate-800">
+      <div className="overflow-x-auto rounded-xl surface-card">
+        <table className="w-full text-left text-xs text-[var(--text-main)]">
+          <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)] uppercase text-[10px] font-bold sticky top-0 border-b border-[var(--border-color)]">
             <tr>
-              <th className="px-3 py-3 w-12 text-slate-400 text-center">#</th>
+              <th className="px-3 py-3 w-12 text-center">#</th>
               {columns.map(col => (
                 <th
                   key={col}
                   onClick={() => handleSort(col)}
-                  className="px-4 py-3 cursor-pointer hover:text-cyan-400 select-none whitespace-nowrap"
+                  className="px-4 py-3 cursor-pointer hover:text-[var(--color-primary)] select-none whitespace-nowrap transition-theme"
                 >
                   <div className="flex items-center gap-1.5">
                     <span>{col}</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    <ArrowUpDown className="w-3 h-3 opacity-60" />
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/80 font-mono text-[11px]">
+          <tbody className="divide-y divide-[var(--border-color)] font-mono text-[11px] tabular-nums">
             {paginatedData.length > 0 ? (
               paginatedData.map((row, rIdx) => {
                 const absoluteIndex = (currentPage - 1) * pageSize + rIdx + 1;
                 return (
-                  <tr key={rIdx} className="hover:bg-cyan-950/20 transition">
-                    <td className="px-3 py-2.5 text-center text-slate-400 font-sans text-[10px]">
+                  <tr key={rIdx} className="hover:bg-[var(--bg-caramel-soft)] transition-theme">
+                    <td className="px-3 py-2.5 text-center text-[var(--text-secondary)] font-sans text-[10px]">
                       {absoluteIndex}
                     </td>
                     {columns.map((c, cIdx) => (
@@ -285,7 +281,9 @@ export const DataExplorer: React.FC = () => {
                             String(row[c])
                           )
                         ) : (
-                          <span className="text-amber-500/70 italic">null</span>
+                          <span className="italic" style={{ color: 'var(--color-warning)' }}>
+                            null
+                          </span>
                         )}
                       </td>
                     ))}
@@ -294,7 +292,7 @@ export const DataExplorer: React.FC = () => {
               })
             ) : (
               <tr>
-                <td colSpan={columns.length + 1} className="py-12 text-center text-slate-400 text-xs">
+                <td colSpan={columns.length + 1} className="py-12 text-center text-[var(--text-secondary)] text-xs font-sans">
                   Tidak ditemukan data yang sesuai dengan pencarian "{searchTerm}"
                 </td>
               </tr>
@@ -304,22 +302,26 @@ export const DataExplorer: React.FC = () => {
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
+      <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] pt-1 tabular-nums">
         <div>
           Halaman {currentPage} dari {totalPages}
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            aria-label="Halaman Sebelumnya"
             disabled={currentPage <= 1}
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-main)] disabled:opacity-40 hover:bg-[var(--bg-caramel-soft)] transition-theme cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
+            type="button"
+            aria-label="Halaman Berikutnya"
             disabled={currentPage >= totalPages}
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-main)] disabled:opacity-40 hover:bg-[var(--bg-caramel-soft)] transition-theme cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

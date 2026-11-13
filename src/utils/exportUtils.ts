@@ -37,9 +37,12 @@ export async function exportElementAsPng(elementId: string, filename: string = '
   const element = document.getElementById(elementId);
   if (!element) return;
 
+  const computedBg =
+    getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#FFFDF9';
+
   const canvas = await html2canvas(element, {
     scale: 2,
-    backgroundColor: '#0B192C',
+    backgroundColor: computedBg,
     logging: false,
     useCORS: true
   });

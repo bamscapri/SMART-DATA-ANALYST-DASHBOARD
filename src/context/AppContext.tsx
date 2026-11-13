@@ -3,6 +3,7 @@ import { SEED_DATASETS, StoredDataset } from '../data/seedDatasets';
 import { analyzeDataset, DatasetStats } from '../utils/analytics';
 import { DEFAULT_ADMIN_PROFILE, DEFAULT_USER_PROFILE, UserProfile } from '../lib/supabase';
 import { generateUniqueId } from '../utils/idGenerator';
+import { useTheme } from './ThemeContext';
 import {
   getSupabaseConfig,
   saveSupabaseConfig,
@@ -110,8 +111,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return datasets[0]?.id || 'ds_retail_2024';
   });
 
+  const { darkMode, toggleDarkMode } = useTheme();
   const [activeSheet, setActiveSheetState] = useState<string>('Transactions_2024');
-  const [darkMode, setDarkMode] = useState<boolean>(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(true);
@@ -314,10 +315,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     addDataset(newDs);
     addToast('success', 'Data Hasil Pembersihan Disimpan', 'Dataset bersih baru telah dibuat terpisah dari data asli.');
-  };
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
   };
 
   const switchRole = (role: 'admin' | 'user') => {

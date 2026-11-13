@@ -9,6 +9,25 @@
     <meta property="og:description" content="Enterprise AI-Powered Data Analytics & Decision Support System with automated insights, statistical forecasting, multi-format document extraction, and Supabase integration." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('smart_ai_theme_mode');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var resolved = mode === 'dark' ? 'dark' : mode === 'system' ? (prefersDark ? 'dark' : 'light') : 'light';
+          var root = document.documentElement;
+          if (resolved === 'dark') {
+            root.classList.add('dark');
+            root.classList.remove('light');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.classList.add('light');
+            root.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

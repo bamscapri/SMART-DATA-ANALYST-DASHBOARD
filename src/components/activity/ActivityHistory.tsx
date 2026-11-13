@@ -4,12 +4,9 @@ import { exportToCsv } from '../../utils/exportUtils';
 import {
   History,
   Search,
-  Filter,
   Download,
   Clock,
   User,
-  ShieldCheck,
-  CheckCircle2,
   Database,
   Sparkles,
   TrendingUp,
@@ -42,20 +39,21 @@ export const ActivityHistory: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <History className="w-5 h-5 text-cyan-400" />
-            Audit Trail & Riwayat Aktivitas Sistem
+          <h1 className="text-xl font-bold text-[var(--text-main)] flex items-center gap-2">
+            <History className="w-5 h-5 text-[var(--color-primary)]" />
+            <span>Audit Trail & Riwayat Aktivitas Sistem</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
             Log operasional komprehensif mencatat setiap upload file, inferensi AI, peramalan statistik, dan pembersihan dataset.
           </p>
         </div>
 
         <button
+          type="button"
           onClick={handleExportLogs}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition self-start sm:self-auto"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] font-semibold text-xs border border-[var(--border-color)] transition-theme self-start sm:self-auto whitespace-nowrap cursor-pointer"
         >
-          <Download className="w-3.5 h-3.5 text-cyan-400" />
+          <Download className="w-3.5 h-3.5 text-[var(--color-primary)]" />
           <span>Export Audit Log (CSV)</span>
         </button>
       </div>
@@ -63,25 +61,27 @@ export const ActivityHistory: React.FC = () => {
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <Search className="w-4 h-4 text-[var(--text-secondary)] absolute left-3 top-2.5" />
           <input
             type="text"
+            aria-label="Cari aktivitas sistem"
             placeholder="Cari aktivitas, user, atau entitas..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full pl-9 pr-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-main)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-caramel)]"
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none self-start sm:self-auto">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 self-start sm:self-auto max-w-full">
           {['ALL', 'LOAD_DATASET', 'AI_QUERY', 'AI_ANALYSIS', 'RUN_FORECAST', 'DATA_CLEANING', 'UPLOAD_FILE'].map(action => (
             <button
               key={action}
+              type="button"
               onClick={() => setFilterAction(action)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-theme whitespace-nowrap cursor-pointer ${
                 filterAction === action
-                  ? 'bg-cyan-500 text-slate-950 font-bold'
-                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
+                  ? 'bg-[var(--color-primary)] text-[var(--text-on-primary)]'
+                  : 'bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-caramel-soft)]'
               }`}
             >
               {action.replace('_', ' ')}
@@ -91,50 +91,51 @@ export const ActivityHistory: React.FC = () => {
       </div>
 
       {/* Activity Timeline List */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 divide-y divide-slate-800 shadow-xl overflow-hidden">
+      <div className="rounded-2xl surface-card divide-y divide-[var(--border-color)] overflow-hidden">
         {filteredLogs.length > 0 ? (
           filteredLogs.map((log, index) => {
-            let badgeClass = 'bg-blue-500/20 text-blue-300';
-            let icon = <Database className="w-4 h-4 text-blue-400" />;
+            let accentColor = 'var(--color-primary)';
+            let icon = <Database className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />;
 
             if (log.action.includes('AI')) {
-              badgeClass = 'bg-cyan-500/20 text-cyan-300';
-              icon = <Sparkles className="w-4 h-4 text-cyan-400" />;
+              accentColor = 'var(--accent-caramel)';
+              icon = <Sparkles className="w-4 h-4" style={{ color: 'var(--accent-caramel)' }} />;
             } else if (log.action.includes('FORECAST')) {
-              badgeClass = 'bg-amber-500/20 text-amber-300';
-              icon = <TrendingUp className="w-4 h-4 text-amber-400" />;
+              accentColor = 'var(--color-warning)';
+              icon = <TrendingUp className="w-4 h-4" style={{ color: 'var(--color-warning)' }} />;
             } else if (log.action.includes('CLEAN')) {
-              badgeClass = 'bg-purple-500/20 text-purple-300';
-              icon = <Wand2 className="w-4 h-4 text-purple-400" />;
+              accentColor = 'var(--color-success)';
+              icon = <Wand2 className="w-4 h-4" style={{ color: 'var(--color-success)' }} />;
             }
 
             return (
-              <div key={`${log.id}-${index}`} className="p-4 hover:bg-slate-800/40 transition flex items-start justify-between gap-4">
+              <div
+                key={`${log.id}-${index}`}
+                className="p-4 hover:bg-[var(--bg-caramel-soft)] transition-theme flex items-start justify-between gap-4"
+              >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 flex-shrink-0 mt-0.5">
-                    {icon}
-                  </div>
+                  <div className="p-2 rounded-xl surface-secondary shrink-0 mt-0.5">{icon}</div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-white">{log.entityName}</span>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${badgeClass}`}>
-                        {log.action}
+                      <span className="text-xs font-bold text-[var(--text-main)]">{log.entityName}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: accentColor }}>
+                        · {log.action}
                       </span>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
                         <User className="w-3 h-3" />
                         {log.userName}
                       </span>
                     </div>
 
                     {log.details && (
-                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
                         {log.details}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 flex-shrink-0">
+                <div className="text-[11px] text-[var(--text-secondary)] font-mono tabular-nums flex items-center gap-1.5 shrink-0">
                   <Clock className="w-3.5 h-3.5" />
                   <span>{new Date(log.timestamp).toLocaleString('id-ID')}</span>
                 </div>
@@ -142,7 +143,7 @@ export const ActivityHistory: React.FC = () => {
             );
           })
         ) : (
-          <div className="p-8 text-center text-xs text-slate-400">
+          <div className="p-8 text-center text-xs text-[var(--text-secondary)]">
             Tidak ditemukan catatan aktivitas yang sesuai dengan filter
           </div>
         )}

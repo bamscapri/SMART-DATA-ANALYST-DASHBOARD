@@ -19,7 +19,7 @@ export const DEFAULT_ADMIN_PROFILE: UserProfile = {
   email: 'admin@smartai.enterprise',
   fullName: 'Director of Analytics',
   role: 'admin',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  avatarUrl: '/src/assets/images/avatar_admin_1794548316205.jpg',
   company: 'PT Nusantara Enterprise Global'
 };
 
@@ -28,6 +28,6 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
   email: 'analyst@smartai.enterprise',
   fullName: 'Senior Data Scientist',
   role: 'user',
-  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  avatarUrl: '/src/assets/images/avatar_analyst_1794548317627.jpg',
   company: 'PT Nusantara Enterprise Global'
 };

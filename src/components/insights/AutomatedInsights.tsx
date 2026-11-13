@@ -8,9 +8,7 @@ import {
   Lightbulb,
   ShieldAlert,
   RefreshCw,
-  Filter,
-  CheckCircle2,
-  ArrowRight
+  CheckCircle2
 } from 'lucide-react';
 
 export interface InsightCardData {
@@ -25,7 +23,7 @@ export interface InsightCardData {
 }
 
 export const AutomatedInsights: React.FC = () => {
-  const { selectedDataset, currentStats, addToast } = useApp();
+  const { selectedDataset, currentStats } = useApp();
   const [insights, setInsights] = useState<InsightCardData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
@@ -48,7 +46,6 @@ export const AutomatedInsights: React.FC = () => {
       if (Array.isArray(data.insights) && data.insights.length > 0) {
         setInsights(data.insights);
       } else {
-        // Fallback default enterprise insights based on stats
         generateDeterministicInsights();
       }
     } catch (err: any) {
@@ -60,7 +57,9 @@ export const AutomatedInsights: React.FC = () => {
   };
 
   const generateDeterministicInsights = () => {
-    const revCol = currentStats.columns.find(c => c.name.includes('Revenue') || c.name.includes('Profit') || c.type === 'numeric');
+    const revCol = currentStats.columns.find(
+      c => c.name.includes('Revenue') || c.name.includes('Profit') || c.type === 'numeric'
+    );
     const catCol = currentStats.categoricalCols[0] || 'Category';
 
     const fallback: InsightCardData[] = [
@@ -72,12 +71,14 @@ export const AutomatedInsights: React.FC = () => {
         sourceColumn: `${revCol?.name || 'Metrik Utama'}`,
         priority: 'HIGH',
         category: 'KEY_FINDING',
-        recommendedAction: 'Fokuskan alokasi sumber daya pada kuartil teratas (Q3) untuk melipatgandakan margin kontribusi.'
+        recommendedAction:
+          'Fokuskan alokasi sumber daya pada kuartil teratas (Q3) untuk melipatgandakan margin kontribusi.'
       },
       {
         id: 'ins-2',
         title: 'Tren Pertumbuhan Volume Konsisten Positif',
-        explanation: 'Pola observasi historis menunjukkan pertumbuhan berkala dengan variabilitas terkendali (StdDev berada dalam rentang normal bisnis).',
+        explanation:
+          'Pola observasi historis menunjukkan pertumbuhan berkala dengan variabilitas terkendali (StdDev berada dalam rentang normal bisnis).',
         supportingNumber: '+22.4% Est.',
         sourceColumn: `${currentStats.dateCols[0] || 'Waktu'}`,
         priority: 'MEDIUM',
@@ -92,12 +93,14 @@ export const AutomatedInsights: React.FC = () => {
         sourceColumn: `${catCol}`,
         priority: 'HIGH',
         category: 'OPPORTUNITY',
-        recommendedAction: 'Lakukan penyesuaian strategi harga berbasis elastisitas masing-masing segmen pasar.'
+        recommendedAction:
+          'Lakukan penyesuaian strategi harga berbasis elastisitas masing-masing segmen pasar.'
       },
       {
         id: 'ins-4',
         title: 'Deteksi Disparitas Kinerja Segmen Bawah',
-        explanation: 'Kuartil bawah (Q1) mencatatkan volume yang stagnan dengan tingkat konversi jauh di bawah rata-rata nasional.',
+        explanation:
+          'Kuartil bawah (Q1) mencatatkan volume yang stagnan dengan tingkat konversi jauh di bawah rata-rata nasional.',
         supportingNumber: `Min: ${(revCol?.stats?.min || 0).toLocaleString()}`,
         sourceColumn: `${revCol?.name || 'Kinerja'}`,
         priority: 'CRITICAL',
@@ -107,22 +110,26 @@ export const AutomatedInsights: React.FC = () => {
       {
         id: 'ins-5',
         title: 'Indikasi Anomali Nilai Ekstrem (Outlier)',
-        explanation: 'Ditemukan beberapa baris transaksi yang melebihi batas 1.5x IQR yang berpotensi mendistorsi kalkulasi rata-rata umum.',
+        explanation:
+          'Ditemukan beberapa baris transaksi yang melebihi batas 1.5x IQR yang berpotensi mendistorsi kalkulasi rata-rata umum.',
         supportingNumber: 'IQR Anomaly Check',
         sourceColumn: `${revCol?.name || 'Outlier Col'}`,
         priority: 'HIGH',
         category: 'ANOMALY',
-        recommendedAction: 'Gunakan fitur Data Cleaning untuk meninjau atau membatasi nilai ekstrim (capping bounds).'
+        recommendedAction:
+          'Gunakan fitur Data Cleaning untuk meninjau atau membatasi nilai ekstrim (capping bounds).'
       },
       {
         id: 'ins-6',
         title: 'Ketergantungan Portofolio Pada Satu Sumber Pendapatan',
-        explanation: 'Sebagian besar proporsi metrik terkonsentrasi pada sejumlah kecil entitas, meningkatkan profil risiko operasional.',
+        explanation:
+          'Sebagian besar proporsi metrik terkonsentrasi pada sejumlah kecil entitas, meningkatkan profil risiko operasional.',
         supportingNumber: 'Risiko Konsentrasi >60%',
         sourceColumn: 'Multi-Variabel',
         priority: 'CRITICAL',
         category: 'RISK',
-        recommendedAction: 'Diversifikasi portofolio untuk mencegah volatilitas pendapatan jika mitra kunci mengalami disrupsi.'
+        recommendedAction:
+          'Diversifikasi portofolio untuk mencegah volatilitas pendapatan jika mitra kunci mengalami disrupsi.'
       }
     ];
 
@@ -143,19 +150,21 @@ export const AutomatedInsights: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-cyan-400" />
-            Automated Data Insights Engine
+          <h1 className="text-xl font-bold text-[var(--text-main)] flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[var(--accent-caramel)]" />
+            <span>Automated Data Insights Engine</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Ekstraksi otomatis pola data, tren positif/negatif, deteksi anomali, peluang, dan risiko berbasis AI untuk dataset: <span className="text-cyan-300 font-semibold">{selectedDataset?.name}</span>
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
+            Ekstraksi otomatis pola data, tren positif/negatif, deteksi anomali, peluang, dan risiko berbasis AI untuk dataset:{' '}
+            <span className="text-[var(--color-primary)] font-semibold">{selectedDataset?.name}</span>
           </p>
         </div>
 
         <button
+          type="button"
           onClick={fetchInsights}
           disabled={isLoading}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs shadow-md shadow-cyan-500/20 transition active:scale-95 self-start sm:self-auto"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] disabled:opacity-50 text-[var(--text-on-primary)] font-semibold text-xs shadow-xs transition-theme active:scale-95 self-start sm:self-auto whitespace-nowrap cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           <span>Regenerate AI Insights</span>
@@ -163,7 +172,7 @@ export const AutomatedInsights: React.FC = () => {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {[
           { key: 'ALL', label: 'Semua Insights' },
           { key: 'KEY_FINDING', label: 'Key Findings' },
@@ -171,15 +180,16 @@ export const AutomatedInsights: React.FC = () => {
           { key: 'NEGATIVE_TREND', label: 'Negative Trends' },
           { key: 'ANOMALY', label: 'Anomalies' },
           { key: 'OPPORTUNITY', label: 'Opportunities' },
-          { key: 'RISK', label: 'Risks & Mitigations' },
+          { key: 'RISK', label: 'Risks & Mitigations' }
         ].map(tab => (
           <button
             key={tab.key}
+            type="button"
             onClick={() => setFilterCategory(tab.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-theme cursor-pointer ${
               filterCategory === tab.key
-                ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-[var(--color-primary)] text-[var(--text-on-primary)] shadow-2xs'
+                : 'bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-caramel-soft)]'
             }`}
           >
             {tab.label}
@@ -190,75 +200,77 @@ export const AutomatedInsights: React.FC = () => {
       {/* Grid of Insight Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredInsights.map(item => {
-          let badgeColor = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
-          let icon = <Lightbulb className="w-4 h-4 text-cyan-400" />;
+          let accentColor = 'var(--color-primary)';
+          let icon = <Lightbulb className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />;
 
           if (item.category === 'POSITIVE_TREND') {
-            badgeColor = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-            icon = <TrendingUp className="w-4 h-4 text-emerald-400" />;
+            accentColor = 'var(--color-success)';
+            icon = <TrendingUp className="w-4 h-4" style={{ color: 'var(--color-success)' }} />;
           } else if (item.category === 'NEGATIVE_TREND') {
-            badgeColor = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
-            icon = <TrendingDown className="w-4 h-4 text-rose-400" />;
+            accentColor = 'var(--color-danger)';
+            icon = <TrendingDown className="w-4 h-4" style={{ color: 'var(--color-danger)' }} />;
           } else if (item.category === 'ANOMALY') {
-            badgeColor = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
-            icon = <AlertTriangle className="w-4 h-4 text-amber-400" />;
+            accentColor = 'var(--color-warning)';
+            icon = <AlertTriangle className="w-4 h-4" style={{ color: 'var(--color-warning)' }} />;
           } else if (item.category === 'RISK') {
-            badgeColor = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-            icon = <ShieldAlert className="w-4 h-4 text-rose-400" />;
+            accentColor = 'var(--color-danger)';
+            icon = <ShieldAlert className="w-4 h-4" style={{ color: 'var(--color-danger)' }} />;
           }
 
-          let priorityClass = 'bg-slate-800 text-slate-300';
-          if (item.priority === 'CRITICAL') priorityClass = 'bg-rose-500/25 text-rose-300 border-rose-500/40';
-          else if (item.priority === 'HIGH') priorityClass = 'bg-amber-500/25 text-amber-300 border-amber-500/40';
-          else if (item.priority === 'MEDIUM') priorityClass = 'bg-blue-500/25 text-blue-300 border-blue-500/40';
+          let priorityColor = 'var(--text-secondary)';
+          if (item.priority === 'CRITICAL') priorityColor = 'var(--color-danger)';
+          else if (item.priority === 'HIGH') priorityColor = 'var(--color-warning)';
+          else if (item.priority === 'MEDIUM') priorityColor = 'var(--color-primary)';
 
           return (
             <div
               key={item.id}
-              className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between space-y-4 shadow-lg"
+              className="p-5 rounded-2xl surface-card hover:border-[var(--accent-caramel)] flex flex-col justify-between space-y-4"
             >
               <div className="space-y-3">
-                {/* Top tags */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
+                {/* Clean Typographic Metadata Header */}
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5 font-bold uppercase tracking-wide" style={{ color: accentColor }}>
                     {icon}
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${badgeColor}`}>
-                      {item.category.replace('_', ' ')}
-                    </span>
+                    <span>{item.category.replace('_', ' ')}</span>
                   </div>
 
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase ${priorityClass}`}>
+                  <span className="font-bold uppercase tracking-wider" style={{ color: priorityColor }}>
                     {item.priority}
                   </span>
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-bold text-white line-clamp-2">{item.title}</h3>
-                  <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
+                  <h3 className="text-sm font-bold text-[var(--text-main)] line-clamp-2">{item.title}</h3>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-1.5 leading-relaxed">
                     {item.explanation}
                   </p>
                 </div>
 
                 {/* Supporting metrics */}
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-slate-400">Angka Pendukung:</span>
-                    <span className="font-bold text-cyan-400 font-mono">{item.supportingNumber}</span>
+                <div className="p-3 rounded-xl surface-secondary space-y-1 tabular-nums">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[var(--text-secondary)]">Angka Pendukung</span>
+                    <span className="font-bold text-[var(--color-primary)] font-mono">
+                      {item.supportingNumber}
+                    </span>
                   </div>
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-slate-400">Sumber Kolom:</span>
-                    <span className="text-slate-300 font-mono truncate max-w-[150px]">{item.sourceColumn}</span>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[var(--text-secondary)]">Sumber Kolom</span>
+                    <span className="text-[var(--text-main)] font-mono truncate max-w-[150px]">
+                      {item.sourceColumn}
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Recommended Action Footer */}
-              <div className="pt-3 border-t border-slate-800 space-y-1 text-xs">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-cyan-400" />
-                  Rekomendasi Tindakan:
+              <div className="pt-3 border-t border-[var(--border-color)] space-y-1 text-xs">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-[var(--color-primary)]" />
+                  <span>Rekomendasi Tindakan</span>
                 </div>
-                <p className="text-[11px] text-slate-200 leading-normal">
+                <p className="text-[11px] text-[var(--text-main)] leading-normal">
                   {item.recommendedAction}
                 </p>
               </div>

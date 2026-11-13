@@ -1,20 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { exportExecutivePdf } from '../../utils/exportUtils';
-import {
-  FileSpreadsheet,
-  Printer,
-  Sparkles,
-  RefreshCw,
-  Sliders,
-  CheckCircle2,
-  Calendar,
-  Building,
-  User,
-  ShieldCheck,
-  TrendingUp,
-  AlertTriangle
-} from 'lucide-react';
+import { FileSpreadsheet, Printer, Sparkles } from 'lucide-react';
 
 export const ExecutiveSummaryModule: React.FC = () => {
   const { selectedDataset, currentStats, currentUser, addToast } = useApp();
@@ -22,9 +9,17 @@ export const ExecutiveSummaryModule: React.FC = () => {
   const [reportStyle, setReportStyle] = useState<string>('Executive Management Report');
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportContent, setReportContent] = useState<string>(() => {
-    const revCol = currentStats.columns.find(c => c.name === 'Revenue') || 
-                   currentStats.columns.find(c => c.name.toLowerCase().includes('revenue') || c.name.toLowerCase().includes('sales') || c.name === 'MRR') || 
-                   currentStats.columns.filter(c => c.type === 'numeric').sort((a, b) => (b.stats?.sum || 0) - (a.stats?.sum || 0))[0];
+    const revCol =
+      currentStats.columns.find(c => c.name === 'Revenue') ||
+      currentStats.columns.find(
+        c =>
+          c.name.toLowerCase().includes('revenue') ||
+          c.name.toLowerCase().includes('sales') ||
+          c.name === 'MRR'
+      ) ||
+      currentStats.columns
+        .filter(c => c.type === 'numeric')
+        .sort((a, b) => (b.stats?.sum || 0) - (a.stats?.sum || 0))[0];
     const totalVal = revCol?.stats?.sum || 4528000000;
     const avgVal = revCol?.stats?.mean || 174153846;
 
@@ -121,10 +116,6 @@ Berdasarkan bukti empiris dan kalkulasi data aktual, perusahaan berada pada posi
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleExportPdf = async () => {
     try {
       await exportExecutivePdf('printable-executive-report', `Executive_Summary_${selectedDataset?.name || 'Dataset'}`);
@@ -139,19 +130,21 @@ Berdasarkan bukti empiris dan kalkulasi data aktual, perusahaan berada pada posi
       {/* Action Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-cyan-400" />
-            Executive Summary & Board Report Generator
+          <h1 className="text-xl font-bold text-[var(--text-main)] flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-[var(--color-primary)]" />
+            <span>Executive Summary & Board Report Generator</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
             Laporan eksekutif komprehensif dalam Bahasa Indonesia formal dengan 10 struktur analitik standar manajemen C-Level.
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
+            type="button"
             onClick={handleExportPdf}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+            style={{ backgroundColor: 'var(--color-success)' }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg hover:opacity-90 text-[#FFFDF9] font-semibold text-xs shadow-xs transition-theme whitespace-nowrap cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Cetak / Download PDF</span>
@@ -160,13 +153,16 @@ Berdasarkan bukti empiris dan kalkulasi data aktual, perusahaan berada pada posi
       </div>
 
       {/* Style Configurator & AI Trigger */}
-      <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+      <div className="p-4 rounded-xl surface-card flex flex-wrap items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-3">
-          <span className="text-slate-400 font-semibold">Gaya Laporan:</span>
+          <label htmlFor="exec-style" className="text-[var(--text-secondary)] font-semibold">
+            Gaya Laporan:
+          </label>
           <select
+            id="exec-style"
             value={reportStyle}
             onChange={(e) => setReportStyle(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 font-medium focus:outline-none focus:border-cyan-500"
+            className="bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-[var(--text-main)] font-medium focus:outline-none focus:border-[var(--accent-caramel)]"
           >
             <option value="Executive Management Report">Executive Management Report (Dewan Direksi)</option>
             <option value="Mendalam">Analisis Mendalam (Deep-Dive Technical & Strategic)</option>
@@ -176,9 +172,10 @@ Berdasarkan bukti empiris dan kalkulasi data aktual, perusahaan berada pada posi
         </div>
 
         <button
+          type="button"
           onClick={handleGenerateAiSummary}
           disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold transition shadow-md shadow-cyan-500/20"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] disabled:opacity-50 text-[var(--text-on-primary)] font-semibold transition-theme shadow-xs cursor-pointer"
         >
           <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
           <span>{isGenerating ? 'Menyusun Laporan AI...' : 'Generate Ulang dengan Gemini AI'}</span>
@@ -188,50 +185,53 @@ Berdasarkan bukti empiris dan kalkulasi data aktual, perusahaan berada pada posi
       {/* Printable Report Document Card */}
       <div
         id="printable-executive-report"
-        className="p-8 md:p-12 rounded-2xl bg-slate-900/95 border border-slate-800 shadow-2xl text-slate-200 space-y-6 print:bg-white print:text-black print:border-none print:p-0"
+        className="p-8 md:p-12 rounded-2xl surface-card text-[var(--text-main)] space-y-6 print:bg-white print:text-black print:border-none print:p-0"
       >
-        {/* Document Header Logo / Letterhead */}
-        <div className="flex items-center justify-between border-b-2 border-cyan-500/80 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-[var(--accent-caramel)] pb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg">
-              <Sparkles className="w-5 h-5 text-cyan-100" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--accent-caramel)] flex items-center justify-center text-[var(--text-on-primary)] font-bold shadow-xs shrink-0">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-cyan-400 uppercase tracking-widest print:text-cyan-700">
+              <div className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-widest">
                 SMART AI DECISION SYSTEM
               </div>
-              <div className="text-lg font-black text-white tracking-tight print:text-black">
+              <div className="text-lg font-black text-[var(--text-main)] tracking-tight print:text-black">
                 EXECUTIVE MANAGEMENT REPORT
               </div>
             </div>
           </div>
 
-          <div className="text-right text-[11px] text-slate-400 print:text-slate-600 space-y-0.5">
+          <div className="sm:text-right text-[11px] text-[var(--text-secondary)] print:text-slate-600 space-y-0.5 tabular-nums">
             <div>Ref: DOC-EX-{Date.now().toString().slice(-6)}</div>
-            <div className="font-semibold text-slate-200 print:text-black">KLASIFIKASI: STRICTLY CONFIDENTIAL</div>
+            <div className="font-semibold text-[var(--text-main)] print:text-black">
+              KLASIFIKASI: STRICTLY CONFIDENTIAL
+            </div>
             <div>{new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
           </div>
         </div>
 
-        {/* Report Content Markdown Renderer */}
-        <div className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-sans text-slate-200 print:text-black space-y-4">
+        <div className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-sans text-[var(--text-main)] print:text-black space-y-4">
           {reportContent}
         </div>
 
-        {/* Document Footer Signatures */}
-        <div className="pt-8 border-t border-slate-800 print:border-slate-300 grid grid-cols-2 gap-8 text-xs text-slate-400 print:text-slate-600">
+        <div className="pt-8 border-t border-[var(--border-color)] print:border-slate-300 grid grid-cols-2 gap-8 text-xs text-[var(--text-secondary)] print:text-slate-600">
           <div>
-            <div className="text-[10px] uppercase font-bold text-slate-400 mb-8">Disusun dan Diverifikasi Oleh:</div>
-            <div className="font-bold text-slate-200 print:text-black">{currentUser.fullName}</div>
-            <div className="text-[11px] text-cyan-400">{currentUser.role === 'admin' ? 'Chief Analytics Officer' : 'Senior Data Scientist'}</div>
-            <div className="text-[10px] text-slate-400 mt-1">Enterprise Analytics Division</div>
+            <div className="text-[10px] uppercase font-bold mb-8">Disusun dan Diverifikasi Oleh:</div>
+            <div className="font-bold text-[var(--text-main)] print:text-black">{currentUser.fullName}</div>
+            <div className="text-[11px] text-[var(--color-primary)] font-medium">
+              {currentUser.role === 'admin' ? 'Chief Analytics Officer' : 'Senior Data Scientist'}
+            </div>
+            <div className="text-[10px] mt-1">Enterprise Analytics Division</div>
           </div>
 
           <div className="text-right">
-            <div className="text-[10px] uppercase font-bold text-slate-400 mb-8">Disahkan untuk Board of Directors:</div>
-            <div className="font-bold text-slate-200 print:text-black">PT Nusantara Enterprise Global</div>
-            <div className="text-[11px] text-emerald-400">Status: Verified Empirically</div>
-            <div className="text-[10px] text-slate-400 mt-1">AI Decision Support Audit Pass</div>
+            <div className="text-[10px] uppercase font-bold mb-8">Disahkan untuk Board of Directors:</div>
+            <div className="font-bold text-[var(--text-main)] print:text-black">PT Nusantara Enterprise Global</div>
+            <div className="text-[11px] font-medium" style={{ color: 'var(--color-success)' }}>
+              Status: Verified Empirically
+            </div>
+            <div className="text-[10px] mt-1">AI Decision Support Audit Pass</div>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -25,7 +26,7 @@ import { SystemSettings } from './components/settings/SystemSettings';
 import { UserProfileView } from './components/profile/UserProfileView';
 
 const MainContent: React.FC = () => {
-  const { currentView, darkMode } = useApp();
+  const { currentView } = useApp();
 
   const renderActiveView = () => {
     switch (currentView) {
@@ -65,11 +66,7 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div
-      className={`min-h-screen flex flex-col antialiased transition-colors duration-200 ${
-        darkMode ? 'bg-[#0B192C] text-slate-100' : 'bg-slate-900 text-slate-100'
-      }`}
-    >
+    <div className="min-h-screen flex flex-col antialiased bg-[var(--bg-main)] text-[var(--text-main)] transition-theme">
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left Navigation Sidebar */}
         <Sidebar />
@@ -77,7 +74,7 @@ const MainContent: React.FC = () => {
         {/* Right Main Panel */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
+          <main className="flex-1 overflow-y-auto bg-[var(--bg-main)] transition-theme">
             {renderActiveView()}
           </main>
         </div>
@@ -91,8 +88,10 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainContent />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <MainContent />
+      </AppProvider>
+    </ThemeProvider>
   );
 }

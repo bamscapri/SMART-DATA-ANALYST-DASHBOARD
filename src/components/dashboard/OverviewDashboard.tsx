@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { useTheme } from '../../context/ThemeContext';
 import {
   Database,
   FileText,
@@ -8,13 +9,9 @@ import {
   Sparkles,
   TrendingUp,
   ArrowUpRight,
-  ShieldAlert,
   Clock,
   ChevronRight,
-  UploadCloud,
-  Wand2,
-  FileSpreadsheet,
-  CheckCircle2
+  FileSpreadsheet
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,6 +34,7 @@ export const OverviewDashboard: React.FC = () => {
     setCurrentView,
     selectDataset
   } = useApp();
+  const { chartTheme } = useTheme();
 
   // Prepare chart data from active dataset
   const trendData = React.useMemo(() => {
@@ -51,7 +49,7 @@ export const OverviewDashboard: React.FC = () => {
 
     return selectedDataset.data.slice(0, 15).map((row, idx) => ({
       name: dateCol ? String(row[dateCol]).slice(5) : `Item ${idx + 1}`,
-      value: typeof row[numCol] === 'number' ? row[numCol] : Number(row[numCol]) || 0,
+      value: typeof row[numCol] === 'number' ? row[numCol] : Number(row[numCol]) || 0
     }));
   }, [selectedDataset, currentStats]);
 
@@ -63,28 +61,33 @@ export const OverviewDashboard: React.FC = () => {
     { name: 'Thu', queries: 52, uploads: 6 },
     { name: 'Fri', queries: 68, uploads: 11 },
     { name: 'Sat', queries: 31, uploads: 2 },
-    { name: 'Sun', queries: 19, uploads: 1 },
+    { name: 'Sun', queries: 19, uploads: 1 }
   ];
 
   // Dynamic KPI calculations
   const totalDatasets = datasets.length;
   const totalRows = datasets.reduce((acc, d) => acc + (d.data?.length || 0), 0);
   const totalNumeric = currentStats.numericCols.length;
-  const primaryMetricSum = currentStats.columns.find(c => c.name === 'Revenue' || c.name === 'MRR' || c.type === 'numeric')?.stats?.sum || 0;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Top Banner / Welcome */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#0B192C] via-[#1E3E62]/40 to-[#0B192C] border border-cyan-500/20 shadow-xl shadow-cyan-950/20">
-        <div>
-          <div className="flex items-center gap-2 text-cyan-400 text-xs font-semibold tracking-wide uppercase">
-            <Sparkles className="w-4 h-4" />
-            Enterprise Decision Support System
+      <div
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl surface-card"
+        style={{
+          backgroundImage:
+            'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)'
+        }}
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[var(--color-primary)] text-xs font-semibold tracking-wide">
+            <Sparkles className="w-4 h-4 text-[var(--accent-caramel)]" />
+            <span>Enterprise Decision Support System</span>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white mt-1">
+          <h1 className="text-xl md:text-2xl font-bold text-[var(--text-main)] tracking-tight">
             SMART AI Data Analyst Dashboard
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] max-w-2xl leading-relaxed">
             Analisis data multi-format, peramalan statistik prediktif, dan rekomendasi keputusan berbasis Google Gemini AI.
           </p>
         </div>
@@ -92,25 +95,28 @@ export const OverviewDashboard: React.FC = () => {
         {/* Quick Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
+            type="button"
             onClick={() => setCurrentView('ai_analyst')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-xs shadow-md shadow-cyan-500/20 transition active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-[var(--text-on-primary)] font-semibold text-xs shadow-xs transition-theme active:scale-95 whitespace-nowrap cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            Tanya AI Data Analyst
+            <span>Tanya AI Data Analyst</span>
           </button>
           <button
+            type="button"
             onClick={() => setCurrentView('forecasting')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] font-medium text-xs border border-[var(--border-color)] transition-theme whitespace-nowrap cursor-pointer"
           >
-            <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
-            Run Forecasting
+            <TrendingUp className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            <span>Run Forecasting</span>
           </button>
           <button
+            type="button"
             onClick={() => setCurrentView('summary')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] font-medium text-xs border border-[var(--border-color)] transition-theme whitespace-nowrap cursor-pointer"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
-            Executive Summary
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[var(--accent-caramel)]" />
+            <span>Executive Summary</span>
           </button>
         </div>
       </div>
@@ -118,61 +124,82 @@ export const OverviewDashboard: React.FC = () => {
       {/* 4 Core KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Total Datasets */}
-        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-xl surface-card hover:border-[var(--accent-caramel)]">
+          <div className="flex items-center justify-between text-[var(--text-secondary)]">
             <span className="text-xs font-medium">1. Total Dataset</span>
-            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+            <div
+              className="p-2 rounded-lg text-[var(--color-primary)]"
+              style={{ backgroundColor: 'var(--bg-primary-soft)' }}
+            >
               <Database className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-white tracking-tight">{totalDatasets}</div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-400">
+          <div className="mt-2 text-2xl font-bold text-[var(--text-main)] tracking-tight tabular-nums">
+            {totalDatasets}
+          </div>
+          <div
+            className="mt-1 flex items-center gap-1 text-[11px] font-medium tabular-nums"
+            style={{ color: 'var(--color-success)' }}
+          >
             <ArrowUpRight className="w-3 h-3" />
             <span>{totalRows.toLocaleString()} baris data terkelola</span>
           </div>
         </div>
 
         {/* KPI 2: Total Files & Extraction */}
-        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-xl surface-card hover:border-[var(--accent-caramel)]">
+          <div className="flex items-center justify-between text-[var(--text-secondary)]">
             <span className="text-xs font-medium">2. File & Dokumen</span>
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+            <div
+              className="p-2 rounded-lg text-[var(--accent-caramel)]"
+              style={{ backgroundColor: 'var(--bg-caramel-soft)' }}
+            >
               <FileText className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-white tracking-tight">{totalDatasets} Dokumen</div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
-            <span>XLSX, CSV, PDF, DOCX</span>
+          <div className="mt-2 text-2xl font-bold text-[var(--text-main)] tracking-tight tabular-nums">
+            {totalDatasets} Dokumen
+          </div>
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
+            XLSX · CSV · PDF · DOCX
           </div>
         </div>
 
         {/* KPI 3: Total Analisis & Variabel */}
-        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-xl surface-card hover:border-[var(--accent-caramel)]">
+          <div className="flex items-center justify-between text-[var(--text-secondary)]">
             <span className="text-xs font-medium">3. Variabel & Kolom</span>
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <div
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: 'var(--bg-success-soft)', color: 'var(--color-success)' }}
+            >
               <LineChart className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-white tracking-tight">
+          <div className="mt-2 text-2xl font-bold text-[var(--text-main)] tracking-tight tabular-nums">
             {currentStats.colCount} Kolom
           </div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-cyan-400">
-            <span>{totalNumeric} Kolom Numerik Terprofiling</span>
+          <div className="mt-1 text-[11px] text-[var(--color-primary)] font-medium tabular-nums">
+            {totalNumeric} Kolom Numerik Terprofiling
           </div>
         </div>
 
         {/* KPI 4: Users & Roles */}
-        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-xl surface-card hover:border-[var(--accent-caramel)]">
+          <div className="flex items-center justify-between text-[var(--text-secondary)]">
             <span className="text-xs font-medium">4. Organisasi & User</span>
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+            <div
+              className="p-2 rounded-lg text-[var(--color-secondary)]"
+              style={{ backgroundColor: 'var(--bg-primary-soft)' }}
+            >
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-white tracking-tight">2 Active Roles</div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
-            <span>Admin & Analyst RBAC</span>
+          <div className="mt-2 text-2xl font-bold text-[var(--text-main)] tracking-tight">
+            2 Active Roles
+          </div>
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
+            Admin & Analyst RBAC
           </div>
         </div>
       </div>
@@ -180,22 +207,23 @@ export const OverviewDashboard: React.FC = () => {
       {/* Main Grid: Data Trend Chart & User Activity Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Data Trend Chart (2 columns) */}
-        <div className="lg:col-span-2 p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-cyan-400" />
-                9. Grafik Tren Data Aktual: {selectedDataset?.name}
+        <div className="lg:col-span-2 p-5 rounded-xl surface-card space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2 truncate">
+                <TrendingUp className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+                <span className="truncate">9. Grafik Tren Data Aktual: {selectedDataset?.name}</span>
               </h2>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
                 Visualisasi deret metrik numerik utama berdasarkan baris transaksi terkini
               </p>
             </div>
             <button
+              type="button"
               onClick={() => setCurrentView('visualization')}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1"
+              className="text-xs text-[var(--color-primary)] hover:text-[var(--accent-caramel)] font-semibold flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-theme"
             >
-              Custom Visualizer
+              <span>Custom Visualizer</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -205,30 +233,45 @@ export const OverviewDashboard: React.FC = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData}>
                   <defs>
-                    <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    <linearGradient id="trendGradientBrown" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartTheme.caramel} stopOpacity={0.45} />
+                      <stop offset="95%" stopColor={chartTheme.caramel} stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10 }} />
-                  <YAxis stroke="#64748b" tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(0)}M` : v} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis
+                    dataKey="name"
+                    stroke={chartTheme.axisStroke}
+                    tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
+                  />
+                  <YAxis
+                    stroke={chartTheme.axisStroke}
+                    tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
+                    tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(0)}M` : v)}
+                  />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
+                    contentStyle={{
+                      backgroundColor: chartTheme.tooltipBg,
+                      borderColor: chartTheme.tooltipBorder,
+                      color: chartTheme.tooltipText,
+                      borderRadius: '10px',
+                      fontSize: '11px'
+                    }}
+                    labelStyle={{ color: chartTheme.tooltipText, fontWeight: 600 }}
                     formatter={(val: any) => [Number(val).toLocaleString(), 'Metric']}
                   />
                   <Area
                     type="monotone"
                     dataKey="value"
-                    stroke="#06b6d4"
+                    stroke={chartTheme.primary}
                     strokeWidth={2.5}
                     fillOpacity={1}
-                    fill="url(#trendGradient)"
+                    fill="url(#trendGradientBrown)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+              <div className="h-full flex items-center justify-center text-[var(--text-secondary)] text-xs">
                 Pilih dataset dengan kolom numerik untuk menampilkan grafik
               </div>
             )}
@@ -236,13 +279,13 @@ export const OverviewDashboard: React.FC = () => {
         </div>
 
         {/* Right: User Activity Chart (8. Grafik Aktivitas Pengguna) */}
-        <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div className="p-5 rounded-xl surface-card space-y-4">
           <div>
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-400" />
-              8. Grafik Aktivitas Pengguna
+            <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[var(--accent-caramel)]" />
+              <span>8. Grafik Aktivitas Pengguna</span>
             </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
               Frekuensi kueri AI dan dataset upload mingguan
             </p>
           </div>
@@ -250,14 +293,27 @@ export const OverviewDashboard: React.FC = () => {
           <div className="h-64 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={userActivityStats}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#64748b" tick={{ fontSize: 10 }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                <XAxis
+                  dataKey="name"
+                  stroke={chartTheme.axisStroke}
+                  tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
                 />
-                <Bar dataKey="queries" fill="#06b6d4" radius={[4, 4, 0, 0]} name="AI Queries" />
-                <Bar dataKey="uploads" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Uploads" />
+                <YAxis
+                  stroke={chartTheme.axisStroke}
+                  tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: chartTheme.tooltipBg,
+                    borderColor: chartTheme.tooltipBorder,
+                    color: chartTheme.tooltipText,
+                    borderRadius: '10px',
+                    fontSize: '11px'
+                  }}
+                />
+                <Bar dataKey="queries" fill={chartTheme.primary} radius={[4, 4, 0, 0]} name="AI Queries" />
+                <Bar dataKey="uploads" fill={chartTheme.caramel} radius={[4, 4, 0, 0]} name="Uploads" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -267,48 +323,55 @@ export const OverviewDashboard: React.FC = () => {
       {/* 2 Columns: 6. AI Insights Preview & 7. Ringkasan Statistik Dataset */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 6. AI Insights Preview Card */}
-        <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div className="p-5 rounded-xl surface-card space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              6. AI Insights & Strategic Highlights
+            <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--accent-caramel)]" />
+              <span>6. AI Insights & Strategic Highlights</span>
             </h2>
             <button
+              type="button"
               onClick={() => setCurrentView('insights')}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1"
+              className="text-xs text-[var(--color-primary)] hover:text-[var(--accent-caramel)] font-semibold flex items-center gap-1 cursor-pointer transition-theme"
             >
-              Lihat Semua Insights
+              <span>Lihat Semua Insights</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-800/40">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
-                  KEY FINDING
+            <div
+              className="p-3.5 rounded-xl border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-caramel-soft)' }}
+            >
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-[var(--color-primary)] uppercase tracking-wide">
+                  Key Finding
                 </span>
-                <span className="text-[10px] text-slate-400">Confidence: 96%</span>
+                <span className="text-[var(--text-secondary)] tabular-nums">Confidence · 96%</span>
               </div>
-              <div className="text-xs font-semibold text-slate-100 mt-1.5">
+              <div className="text-xs font-semibold text-[var(--text-main)] mt-1.5">
                 Dominasi Pendapatan Regional Tertinggi
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+              <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
                 Wilayah Jabodetabek dan Jawa Timur menghasilkan lebih dari 65% total omset perusahaan, dengan performa lini produk Electronics sebagai kontributor margin tertinggi.
               </p>
             </div>
 
-            <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/40">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                  POSITIVE TREND
+            <div
+              className="p-3.5 rounded-xl border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-success-soft)' }}
+            >
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--color-success)' }}>
+                  Positive Trend
                 </span>
-                <span className="text-[10px] text-slate-400">+18.4% YoY</span>
+                <span className="text-[var(--text-secondary)] tabular-nums">+18.4% YoY</span>
               </div>
-              <div className="text-xs font-semibold text-slate-100 mt-1.5">
+              <div className="text-xs font-semibold text-[var(--text-main)] mt-1.5">
                 Peningkatan Efisiensi Channel B2B Portal
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+              <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
                 Rata-rata nilai per transaksi (AOV) pada segmen B2B Portal tercatat 3.2x lebih tinggi dibandingkan channel E-Commerce konvensional tanpa memerlukan diskon berlebih.
               </p>
             </div>
@@ -316,54 +379,71 @@ export const OverviewDashboard: React.FC = () => {
         </div>
 
         {/* 7. Ringkasan Statistik Dataset */}
-        <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div className="p-5 rounded-xl surface-card space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <LineChart className="w-4 h-4 text-emerald-400" />
-              7. Ringkasan Statistik Dataset Aktif
+            <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+              <LineChart className="w-4 h-4 text-[var(--color-success)]" />
+              <span>7. Ringkasan Statistik Dataset Aktif</span>
             </h2>
             <button
+              type="button"
               onClick={() => setCurrentView('explorer')}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1"
+              className="text-xs text-[var(--color-primary)] hover:text-[var(--accent-caramel)] font-semibold flex items-center gap-1 cursor-pointer transition-theme"
             >
-              Buka Explorer
+              <span>Buka Explorer</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
-              <div className="text-[10px] text-slate-400">Total Baris</div>
-              <div className="text-base font-bold text-white mt-1">{currentStats.rowCount}</div>
+            <div className="p-3 rounded-lg surface-secondary">
+              <div className="text-[11px] text-[var(--text-secondary)]">Total Baris</div>
+              <div className="text-base font-bold text-[var(--text-main)] mt-1 tabular-nums">
+                {currentStats.rowCount}
+              </div>
             </div>
-            <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
-              <div className="text-[10px] text-slate-400">Total Kolom</div>
-              <div className="text-base font-bold text-white mt-1">{currentStats.colCount}</div>
+            <div className="p-3 rounded-lg surface-secondary">
+              <div className="text-[11px] text-[var(--text-secondary)]">Total Kolom</div>
+              <div className="text-base font-bold text-[var(--text-main)] mt-1 tabular-nums">
+                {currentStats.colCount}
+              </div>
             </div>
-            <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
-              <div className="text-[10px] text-slate-400">Missing Cells</div>
-              <div className="text-base font-bold text-emerald-400 mt-1">{currentStats.missingCells}</div>
+            <div className="p-3 rounded-lg surface-secondary">
+              <div className="text-[11px] text-[var(--text-secondary)]">Missing Cells</div>
+              <div
+                className="text-base font-bold mt-1 tabular-nums"
+                style={{ color: 'var(--color-success)' }}
+              >
+                {currentStats.missingCells}
+              </div>
             </div>
-            <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
-              <div className="text-[10px] text-slate-400">Duplikasi</div>
-              <div className="text-base font-bold text-cyan-400 mt-1">{currentStats.duplicateRows}</div>
+            <div className="p-3 rounded-lg surface-secondary">
+              <div className="text-[11px] text-[var(--text-secondary)]">Duplikasi</div>
+              <div className="text-base font-bold text-[var(--color-primary)] mt-1 tabular-nums">
+                {currentStats.duplicateRows}
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="text-[11px] font-semibold text-slate-400">Distribusi Tipe Kolom:</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                Numerik: {currentStats.numericCols.length} kolom
+          <div className="pt-2 border-t border-[var(--border-color)] space-y-1.5">
+            <div className="text-[11px] font-semibold text-[var(--text-secondary)]">
+              Distribusi Tipe Kolom
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-xs text-[var(--text-main)] tabular-nums">
+              <span>
+                Numerik: <strong>{currentStats.numericCols.length}</strong>
               </span>
-              <span className="text-[11px] px-2.5 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                Kategori: {currentStats.categoricalCols.length} kolom
+              <span aria-hidden="true" className="text-[var(--text-secondary)]">·</span>
+              <span>
+                Kategori: <strong>{currentStats.categoricalCols.length}</strong>
               </span>
-              <span className="text-[11px] px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                Tanggal: {currentStats.dateCols.length} kolom
+              <span aria-hidden="true" className="text-[var(--text-secondary)]">·</span>
+              <span>
+                Tanggal: <strong>{currentStats.dateCols.length}</strong>
               </span>
-              <span className="text-[11px] px-2.5 py-1 rounded bg-slate-500/10 text-slate-300 border border-slate-500/20">
-                Teks: {currentStats.textCols.length} kolom
+              <span aria-hidden="true" className="text-[var(--text-secondary)]">·</span>
+              <span>
+                Teks: <strong>{currentStats.textCols.length}</strong>
               </span>
             </div>
           </div>
@@ -373,30 +453,31 @@ export const OverviewDashboard: React.FC = () => {
       {/* 5. Aktivitas Analisis Terakhir & 10. Recent Uploaded Files */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 5. Aktivitas Terakhir */}
-        <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+        <div className="p-5 rounded-xl surface-card space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-cyan-400" />
-              5. Aktivitas Analisis Terakhir
+            <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>5. Aktivitas Analisis Terakhir</span>
             </h2>
             <button
+              type="button"
               onClick={() => setCurrentView('activity')}
-              className="text-xs text-cyan-400 hover:text-cyan-300"
+              className="text-xs text-[var(--color-primary)] hover:text-[var(--accent-caramel)] font-semibold cursor-pointer transition-theme"
             >
               Lihat History
             </button>
           </div>
 
-          <div className="divide-y divide-slate-800">
+          <div className="divide-y divide-[var(--border-color)]">
             {activityLogs.slice(0, 4).map((log, index) => (
               <div key={`${log.id}-${index}`} className="py-2.5 flex items-center justify-between text-xs">
                 <div>
-                  <div className="font-semibold text-slate-200">{log.entityName}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {log.action} • {log.userName}
+                  <div className="font-semibold text-[var(--text-main)]">{log.entityName}</div>
+                  <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    {log.action} · {log.userName}
                   </div>
                 </div>
-                <div className="text-[10px] text-slate-400">
+                <div className="text-[11px] text-[var(--text-secondary)] tabular-nums">
                   {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -405,48 +486,55 @@ export const OverviewDashboard: React.FC = () => {
         </div>
 
         {/* 10. Recent Uploaded Files */}
-        <div className="p-5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+        <div className="p-5 rounded-xl surface-card space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <Database className="w-4 h-4 text-blue-400" />
-              10. Recent Uploaded Files
+            <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+              <Database className="w-4 h-4 text-[var(--accent-caramel)]" />
+              <span>10. Recent Uploaded Files</span>
             </h2>
             <button
+              type="button"
               onClick={() => setCurrentView('datasets')}
-              className="text-xs text-cyan-400 hover:text-cyan-300"
+              className="text-xs text-[var(--color-primary)] hover:text-[var(--accent-caramel)] font-semibold cursor-pointer transition-theme"
             >
               Kelola File
             </button>
           </div>
 
-          <div className="divide-y divide-slate-800">
-            {datasets.map((ds, index) => (
-              <div
-                key={`${ds.id}-${index}`}
-                onClick={() => selectDataset(ds.id)}
-                className={`py-2.5 px-2 rounded-lg flex items-center justify-between text-xs cursor-pointer transition ${
-                  selectedDataset?.id === ds.id ? 'bg-cyan-950/30 border border-cyan-800/40' : 'hover:bg-slate-800/50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded bg-slate-800 text-cyan-400 font-bold uppercase text-[10px]">
-                    {ds.fileType}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-200">{ds.name}</div>
-                    <div className="text-[10px] text-slate-400">
-                      {ds.data?.length || 0} baris • {(ds.fileSize / 1024).toFixed(0)} KB
+          <div className="divide-y divide-[var(--border-color)]">
+            {datasets.map((ds, index) => {
+              const isSelected = selectedDataset?.id === ds.id;
+              return (
+                <button
+                  key={`${ds.id}-${index}`}
+                  type="button"
+                  onClick={() => selectDataset(ds.id)}
+                  className={`w-full py-2.5 px-2.5 rounded-lg flex items-center justify-between text-xs cursor-pointer transition-theme text-left ${
+                    isSelected
+                      ? 'bg-[var(--bg-caramel-soft)]'
+                      : 'hover:bg-[var(--bg-card-hover)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--color-primary)] font-bold uppercase text-[10px] shrink-0">
+                      {ds.fileType}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--text-main)] truncate">{ds.name}</div>
+                      <div className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                        {ds.data?.length || 0} baris · {(ds.fileSize / 1024).toFixed(0)} KB
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {selectedDataset?.id === ds.id && (
-                  <span className="text-[10px] font-semibold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">
-                    Aktif
-                  </span>
-                )}
-              </div>
-            ))}
+                  {isSelected && (
+                    <span className="text-[11px] font-semibold text-[var(--color-primary)] shrink-0 ml-2">
+                      Aktif
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -1,1 +1,163 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+
+  /* Light Mode: Warm Brown Cream Palette */
+  --bg-main: #F5EFE6;
+  --bg-sidebar: #E9DFD1;
+  --bg-card: #FFFDF9;
+  --bg-secondary: #EEE5D9;
+  --bg-header: rgba(245, 239, 230, 0.92);
+  --bg-input: #FFFDF9;
+  --bg-card-hover: #F5EDE2;
+
+  --color-primary: #795548;
+  --color-primary-hover: #65453A;
+  --color-secondary: #A1887F;
+  --accent-caramel: #C49A6C;
+  --accent-cream: #DCC6A1;
+  --border-color: #DED3C5;
+
+  --text-main: #382E27;
+  --text-secondary: #796B60;
+  --text-on-primary: #FFFDF9;
+
+  --color-success: #4F8065;
+  --color-warning: #C58B42;
+  --color-danger: #B85C50;
+
+  /* Derived Soft Surfaces & Focus */
+  --bg-primary-soft: rgba(121, 85, 72, 0.11);
+  --bg-caramel-soft: rgba(196, 154, 108, 0.16);
+  --bg-success-soft: rgba(79, 128, 101, 0.13);
+  --bg-warning-soft: rgba(197, 139, 66, 0.14);
+  --bg-danger-soft: rgba(184, 92, 80, 0.13);
+
+  --shadow-card: 0 1px 3px 0 rgba(56, 46, 39, 0.06), 0 1px 2px -1px rgba(56, 46, 39, 0.04);
+  --shadow-elevated: 0 8px 24px -4px rgba(56, 46, 39, 0.10), 0 2px 6px -1px rgba(56, 46, 39, 0.05);
+  --scrollbar-thumb: #C9BAAB;
+  --scrollbar-thumb-hover: #A1887F;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Dark Mode: Warm Espresso Dark Brown Palette */
+  --bg-main: #211C19;
+  --bg-sidebar: #29221E;
+  --bg-card: #332A25;
+  --bg-secondary: #3B3029;
+  --bg-header: rgba(33, 28, 25, 0.92);
+  --bg-input: #29221E;
+  --bg-card-hover: #3D322B;
+
+  --color-primary: #B38B68;
+  --color-primary-hover: #C49B78;
+  --color-secondary: #A1887F;
+  --accent-caramel: #D1A575;
+  --accent-cream: #E5D1B5;
+  --border-color: #4A3C33;
+
+  --text-main: #F5EDE3;
+  --text-secondary: #C1B1A1;
+  --text-on-primary: #211C19;
+
+  --color-success: #80B493;
+  --color-warning: #E0B16C;
+  --color-danger: #DC8278;
+
+  /* Derived Soft Surfaces & Focus */
+  --bg-primary-soft: rgba(179, 139, 104, 0.16);
+  --bg-caramel-soft: rgba(209, 165, 117, 0.16);
+  --bg-success-soft: rgba(128, 180, 147, 0.15);
+  --bg-warning-soft: rgba(224, 177, 108, 0.16);
+  --bg-danger-soft: rgba(220, 130, 120, 0.16);
+
+  --shadow-card: 0 2px 6px 0 rgba(12, 9, 7, 0.25);
+  --shadow-elevated: 0 12px 28px -4px rgba(10, 8, 6, 0.45);
+  --scrollbar-thumb: #59483D;
+  --scrollbar-thumb-hover: #7D6658;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    transition: background-color 250ms ease, color 250ms ease;
+  }
+
+  /* Smooth theme transitions across cards, sidebars, headers, buttons, inputs */
+  .transition-theme {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: 240ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html,
+    body,
+    .transition-theme {
+      transition-duration: 0ms !important;
+    }
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--accent-caramel);
+    outline-offset: 1px;
+  }
+
+  select option {
+    background-color: var(--bg-card);
+    color: var(--text-main);
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Warm Enterprise Surface Helpers */
+.surface-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+  transition: background-color 240ms ease, border-color 240ms ease, color 240ms ease, box-shadow 240ms ease;
+}
+
+.surface-secondary {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: background-color 240ms ease, border-color 240ms ease, color 240ms ease;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

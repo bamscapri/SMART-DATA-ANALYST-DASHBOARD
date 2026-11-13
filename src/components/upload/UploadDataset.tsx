@@ -4,14 +4,10 @@ import { parseUploadedDocument, ParsedDocumentResult } from '../../utils/filePar
 import { generateUniqueId } from '../../utils/idGenerator';
 import {
   UploadCloud,
-  FileSpreadsheet,
-  FileText,
   FileCheck,
   AlertCircle,
-  CheckCircle2,
   Trash2,
   RefreshCw,
-  Eye,
   Layers,
   ArrowRight
 } from 'lucide-react';
@@ -36,7 +32,6 @@ export const UploadDataset: React.FC = () => {
     setUploadProgress(25);
 
     try {
-      // Validate file extension
       const ext = file.name.split('.').pop()?.toLowerCase();
       if (!['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc'].includes(ext || '')) {
         throw new Error('Format file tidak didukung. Harap unggah file .xlsx, .xls, .csv, .pdf, atau .docx.');
@@ -92,18 +87,22 @@ export const UploadDataset: React.FC = () => {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Title */}
       <div>
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
-          <UploadCloud className="w-5 h-5 text-cyan-400" />
-          Modul Upload & Ekstraksi Multi-Format
+        <h1 className="text-xl font-bold text-[var(--text-main)] flex items-center gap-2">
+          <UploadCloud className="w-5 h-5 text-[var(--color-primary)]" />
+          <span>Modul Upload & Ekstraksi Multi-Format</span>
         </h1>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-[var(--text-secondary)] mt-1">
           Unggah dokumen Excel (.xlsx, .xls), CSV, PDF, atau Word (.docx). Sistem secara otomatis mengekstrak struktur tabel, tipe data kolom, dan metadata analitik.
         </p>
       </div>
 
       {/* Drag & Drop Area */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      <button
+        type="button"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
@@ -111,10 +110,10 @@ export const UploadDataset: React.FC = () => {
           handleFiles(e.dataTransfer.files);
         }}
         onClick={() => fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 ${
+        className={`w-full border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-theme block ${
           isDragging
-            ? 'border-cyan-400 bg-cyan-950/30'
-            : 'border-slate-700/80 hover:border-cyan-500/50 bg-slate-900/60'
+            ? 'border-[var(--color-primary)] bg-[var(--bg-caramel-soft)]'
+            : 'border-[var(--border-color)] hover:border-[var(--accent-caramel)] bg-[var(--bg-card)] shadow-2xs'
         }`}
       >
         <input
@@ -126,51 +125,63 @@ export const UploadDataset: React.FC = () => {
         />
 
         <div className="flex flex-col items-center justify-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
-            {isProcessing ? (
-              <RefreshCw className="w-7 h-7 animate-spin" />
-            ) : (
-              <UploadCloud className="w-7 h-7" />
-            )}
+          <div
+            className="w-14 h-14 rounded-2xl border border-[var(--accent-caramel)] flex items-center justify-center text-[var(--color-primary)]"
+            style={{ backgroundColor: 'var(--bg-caramel-soft)' }}
+          >
+            {isProcessing ? <RefreshCw className="w-7 h-7 animate-spin" /> : <UploadCloud className="w-7 h-7" />}
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-slate-100">
-              Drag & Drop file dokumen ke sini, atau <span className="text-cyan-400 hover:underline">Browse File</span>
+            <div className="text-sm font-semibold text-[var(--text-main)]">
+              Drag & Drop file dokumen ke sini, atau{' '}
+              <span className="text-[var(--color-primary)] underline">Browse File</span>
             </div>
-            <div className="text-xs text-slate-400 mt-1">
+            <div className="text-xs text-[var(--text-secondary)] mt-1">
               Dukungan format: Excel (.xlsx, .xls), CSV (.csv), PDF (.pdf), Word (.docx, .doc) (Maks 50MB)
             </div>
           </div>
 
-          {/* Supported Format Badges */}
-          <div className="flex items-center gap-2 pt-2">
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          {/* Supported Format Labels */}
+          <div className="flex items-center gap-3 pt-2 text-[11px] font-semibold flex-wrap justify-center">
+            <span
+              className="px-2.5 py-1 rounded-md border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-success-soft)', color: 'var(--color-success)' }}
+            >
               EXCEL (.XLSX)
             </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+            <span
+              className="px-2.5 py-1 rounded-md border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-primary-soft)', color: 'var(--color-primary)' }}
+            >
               CSV
             </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+            <span
+              className="px-2.5 py-1 rounded-md border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-danger-soft)', color: 'var(--color-danger)' }}
+            >
               PDF
             </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+            <span
+              className="px-2.5 py-1 rounded-md border border-[var(--border-color)]"
+              style={{ backgroundColor: 'var(--bg-warning-soft)', color: 'var(--color-warning)' }}
+            >
               WORD (.DOCX)
             </span>
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Upload Progress Indicator */}
       {isProcessing && (
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-300">
+        <div className="p-4 rounded-xl surface-card space-y-2">
+          <div className="flex items-center justify-between text-xs text-[var(--text-main)]">
             <span>Mengekstrak dan memvalidasi isi dokumen...</span>
-            <span className="font-bold text-cyan-400">{uploadProgress}%</span>
+            <span className="font-bold text-[var(--color-primary)] tabular-nums">{uploadProgress}%</span>
           </div>
-          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-[var(--bg-secondary)] h-2 rounded-full overflow-hidden">
             <div
-              className="bg-cyan-500 h-full transition-all duration-300 rounded-full"
+              className="bg-[var(--color-primary)] h-full transition-all duration-300 rounded-full"
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
@@ -179,32 +190,43 @@ export const UploadDataset: React.FC = () => {
 
       {/* Error Message */}
       {errorMessage && (
-        <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
-          <div>{errorMessage}</div>
+        <div
+          className="p-4 rounded-xl border text-xs flex items-center gap-3"
+          style={{
+            backgroundColor: 'var(--bg-danger-soft)',
+            borderColor: 'var(--color-danger)',
+            color: 'var(--color-danger)'
+          }}
+        >
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <div className="font-medium">{errorMessage}</div>
         </div>
       )}
 
       {/* Parsed Result & Configuration Preview */}
       {parsedPreview && (
-        <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-5 animate-in fade-in">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="p-6 rounded-2xl surface-card space-y-5">
+          <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <div
+                className="p-2.5 rounded-lg"
+                style={{ backgroundColor: 'var(--bg-success-soft)', color: 'var(--color-success)' }}
+              >
                 <FileCheck className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-sm font-bold text-white">{parsedPreview.fileName}</div>
-                <div className="text-xs text-slate-400">
-                  Format: {parsedPreview.fileType.toUpperCase()} • Ukuran: {(parsedPreview.fileSize / 1024).toFixed(1)} KB • Total Baris:{' '}
-                  {parsedPreview.data.length}
+                <div className="text-sm font-bold text-[var(--text-main)]">{parsedPreview.fileName}</div>
+                <div className="text-xs text-[var(--text-secondary)] tabular-nums">
+                  Format: {parsedPreview.fileType.toUpperCase()} · Ukuran: {(parsedPreview.fileSize / 1024).toFixed(1)} KB · Total Baris: {parsedPreview.data.length}
                 </div>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => setParsedPreview(null)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+              aria-label="Batalkan Preview Upload"
+              className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-secondary)] transition-theme cursor-pointer"
               title="Batalkan"
             >
               <Trash2 className="w-4 h-4" />
@@ -214,35 +236,37 @@ export const UploadDataset: React.FC = () => {
           {/* Form Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Nama Dataset di Dashboard:
+              <label htmlFor="up-name" className="text-xs font-semibold text-[var(--text-main)] block mb-1">
+                Nama Dataset di Dashboard
               </label>
               <input
+                id="up-name"
                 type="text"
                 value={datasetName}
                 onChange={(e) => setDatasetName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Deskripsi Singkat:
+              <label htmlFor="up-desc" className="text-xs font-semibold text-[var(--text-main)] block mb-1">
+                Deskripsi Singkat
               </label>
               <input
+                id="up-desc"
                 type="text"
                 value={datasetDesc}
                 onChange={(e) => setDatasetDesc(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
               />
             </div>
           </div>
 
           {/* Multi-sheet Picker for Excel */}
           {parsedPreview.sheets && parsedPreview.sheets.length > 1 && (
-            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-                <Layers className="w-4 h-4 text-cyan-400" />
+            <div className="p-3.5 rounded-xl surface-secondary space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-main)]">
+                <Layers className="w-4 h-4 text-[var(--color-primary)]" />
                 <span>Terdeteksi Multi-Sheet Excel. Pilih Sheet yang akan Diimpor:</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -251,10 +275,10 @@ export const UploadDataset: React.FC = () => {
                     key={sheet.name}
                     type="button"
                     onClick={() => setSelectedSheetName(sheet.name)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-theme cursor-pointer ${
                       selectedSheetName === sheet.name
-                        ? 'bg-cyan-500 text-slate-950 font-bold'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        ? 'bg-[var(--color-primary)] text-[var(--text-on-primary)] font-semibold'
+                        : 'bg-[var(--bg-card)] text-[var(--text-main)] border border-[var(--border-color)] hover:bg-[var(--bg-caramel-soft)]'
                     }`}
                   >
                     {sheet.name} ({sheet.data.length} baris)
@@ -266,16 +290,16 @@ export const UploadDataset: React.FC = () => {
 
           {/* Table Preview (First 5 rows) */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-              <span>Preview Data Ekstraksi (5 Baris Pertama):</span>
-              <span className="text-[10px] text-slate-400">
+            <div className="text-xs font-semibold text-[var(--text-main)] flex items-center justify-between">
+              <span>Preview Data Ekstraksi (5 Baris Pertama)</span>
+              <span className="text-[11px] text-[var(--text-secondary)] tabular-nums">
                 Kolom terdeteksi: {parsedPreview.data[0] ? Object.keys(parsedPreview.data[0]).length : 0}
               </span>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-800 max-h-56">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold sticky top-0 border-b border-slate-800">
+            <div className="overflow-x-auto rounded-xl border border-[var(--border-color)] max-h-56">
+              <table className="w-full text-left text-xs text-[var(--text-main)]">
+                <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)] uppercase text-[10px] font-bold sticky top-0 border-b border-[var(--border-color)]">
                   <tr>
                     {parsedPreview.data[0] &&
                       Object.keys(parsedPreview.data[0]).map(col => (
@@ -285,9 +309,9 @@ export const UploadDataset: React.FC = () => {
                       ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 bg-slate-900/60 font-mono text-[11px]">
+                <tbody className="divide-y divide-[var(--border-color)] bg-[var(--bg-card)] font-mono text-[11px] tabular-nums">
                   {parsedPreview.data.slice(0, 5).map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-slate-800/40">
+                    <tr key={rIdx} className="hover:bg-[var(--bg-caramel-soft)] transition-theme">
                       {Object.keys(row).map((k, cIdx) => (
                         <td key={cIdx} className="px-3 py-2 whitespace-nowrap">
                           {String(row[k] ?? '-')}
@@ -301,16 +325,18 @@ export const UploadDataset: React.FC = () => {
           </div>
 
           {/* Save / Commit CTA */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border-color)]">
             <button
+              type="button"
               onClick={() => setParsedPreview(null)}
-              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+              className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] text-xs font-medium border border-[var(--border-color)] transition-theme cursor-pointer"
             >
               Batalkan
             </button>
             <button
+              type="button"
               onClick={handleSaveToSystem}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 transition active:scale-95"
+              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-[var(--text-on-primary)] font-semibold text-xs shadow-xs transition-theme active:scale-95 cursor-pointer"
             >
               <span>Simpan ke Database & Analisis</span>
               <ArrowRight className="w-4 h-4" />

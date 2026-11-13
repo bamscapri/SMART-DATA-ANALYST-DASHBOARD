@@ -38,11 +38,35 @@ test('generateForecast produces future projections and evaluation metrics', () =
     { date: '2024-01-05', value: 140 }
   ];
 
-  const forecast = generateForecast(history, 'linear', '7d');
+  const forecast = generateForecast(history, 'linear', '7d', 0.95);
   assert.equal(forecast.horizonSteps, 7);
   assert.equal(forecast.points.length, 5 + 7);
   assert.ok(forecast.evaluation.r2 > 0.9);
   assert.equal(forecast.evaluation.trend, 'UPWARD');
+  assert.equal(forecast.evaluation.confidenceLevel, 0.95);
+  assert.equal(forecast.evaluation.zScore, 1.96);
+  assert.ok(forecast.evaluation.ciUpper > forecast.evaluation.ciLower);
+
+  // Verify every forecast point has lowerBound, upperBound, and marginOfError
+  forecast.points.forEach(pt => {
+    assert.ok(typeof pt.lowerBound === 'number');
+    assert.ok(typeof pt.upperBound === 'number');
+    assert.ok(pt.upperBound >= pt.lowerBound);
+    assert.ok(typeof pt.marginOfError === 'number');
+  });
+});
+
+test('generateForecast handles non-ISO date strings and sequence labels without crashing', () => {
+  const sequenceHistory = [
+    { date: 'Periode 1', value: 50 },
+    { date: 'Periode 2', value: 55 },
+    { date: 'Periode 3', value: 60 }
+  ];
+
+  const forecast = generateForecast(sequenceHistory, 'linear', '7d', 0.95);
+  assert.equal(forecast.points.length, 3 + 7);
+  assert.equal(forecast.points[3].date, 'Periode 4');
+  assert.ok(forecast.evaluation.ciUpper > forecast.evaluation.ciLower);
 });
 
 test('cleanDataset drops duplicates and imputes missing values', () => {
