@@ -1318,3 +1318,223 @@ export async function saveActivityLogToSupabase(log: ActivityLogItem, explicitUs
     // Non-blocking audit log fallback
   }
 }
+
+export interface ForecastHistoryRecord {
+  id: string;
+  datasetId: string;
+  datasetName: string;
+  sheetName?: string;
+  title: string;
+  dateColumn: string;
+  targetColumn: string;
+  categoryColumn?: string;
+  segmentValue?: string;
+  method: string;
+  horizon: string;
+  customSteps?: number;
+  frequency?: string;
+  historicalPeriod?: string;
+  aggregation?: string;
+  confidenceLevel: number;
+  historicalData: any[];
+  forecastData: any[];
+  evaluation: Record<string, any>;
+  statistics?: Record<string, any>;
+  scenarios?: Record<string, any>;
+  backtestPoints?: any[];
+  aiAnalysis?: string | null;
+  source: 'supabase' | 'local';
+  createdAt: string;
+}
+
+export async function fetchForecastHistoryFromSupabase(): Promise<{
+  records: ForecastHistoryRecord[];
+  error?: string;
+}> {
+  const client = getSupabaseClient();
+  if (!client) return { records: [] };
+
+  try {
+    const { data: sessionRes } = await client.auth.getSession();
+    if (!sessionRes?.session?.user?.id) {
+      return { records: [] };
+    }
+
+    const { data, error } = await client
+      .from('forecasts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (error) {
+      const parsed = parseSupabaseError(error, 'database');
+      appendSupabaseTechLog('DATABASE', 'warning', `Gagal membaca riwayat forecasting: ${parsed.userMessage}`);
+      return { records: [], error: parsed.userMessage };
+    }
+
+    const records: ForecastHistoryRecord[] = (data || []).map((row: any) => {
+      const evalObj = row.evaluation || {};
+      const meta = evalObj._meta || {};
+      return {
+        id: row.id,
+        datasetId: row.dataset_id,
+        datasetName: meta.datasetName || 'Dataset Supabase',
+        sheetName: meta.sheetName,
+        title: row.title,
+        dateColumn: row.date_column,
+        targetColumn: row.target_column,
+        categoryColumn: meta.categoryColumn,
+        segmentValue: meta.segmentValue,
+        method: row.method,
+        horizon: row.horizon,
+        customSteps: meta.customSteps,
+        frequency: meta.frequency,
+        historicalPeriod: meta.historicalPeriod,
+        aggregation: meta.aggregation,
+        confidenceLevel: Number(evalObj.confidenceLevel || 0.95),
+        historicalData: Array.isArray(row.historical_data) ? row.historical_data : [],
+        forecastData: Array.isArray(row.forecast_data) ? row.forecast_data : [],
+        evaluation: evalObj,
+        statistics: meta.statistics,
+        scenarios: meta.scenarios,
+        backtestPoints: meta.backtestPoints,
+        aiAnalysis: meta.aiAnalysis || null,
+        source: 'supabase',
+        createdAt: row.created_at,
+      };
+    });
+
+    return { records };
+  } catch (err: any) {
+    const parsed = parseSupabaseError(err, 'database');
+    return { records: [], error: parsed.userMessage };
+  }
+}
+
+export async function saveForecastToSupabase(
+  record: Omit<ForecastHistoryRecord, 'id' | 'source' | 'createdAt'>,
+  datasetObj?: StoredDataset | null
+): Promise<{ success: boolean; savedRecord?: ForecastHistoryRecord; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Supabase Client belum siap; riwayat disimpan lokal.' };
+  }
+
+  try {
+    const { data: sessionRes } = await client.auth.getSession();
+    const authUserId = sessionRes?.session?.user?.id;
+    if (!authUserId) {
+      return {
+        success: false,
+        message: 'Belum login Supabase Auth; riwayat forecasting disimpan pada penyimpanan lokal browser.',
+      };
+    }
+
+    let resolvedDatasetId = isValidUuid(record.datasetId) ? record.datasetId : '';
+
+    // Resolve UUID in public.datasets for local/seed datasets so FK constraint succeeds
+    if (!resolvedDatasetId && datasetObj) {
+      const { data: existingRows } = await client
+        .from('datasets')
+        .select('id, metadata')
+        .eq('user_id', authUserId)
+        .limit(50);
+
+      const matched = (existingRows || []).find(
+        (d: any) => d?.metadata?.localRefId === datasetObj.id
+      );
+
+      if (matched?.id) {
+        resolvedDatasetId = matched.id;
+      } else {
+        const dsSave = await saveDatasetToSupabase(datasetObj, authUserId);
+        if (dsSave.success && dsSave.savedId && isValidUuid(dsSave.savedId)) {
+          resolvedDatasetId = dsSave.savedId;
+        }
+      }
+    }
+
+    if (!resolvedDatasetId) {
+      return {
+        success: false,
+        message: 'Tabel datasets Supabase belum siap untuk relasi FK; hasil forecasting disimpan secara lokal.',
+      };
+    }
+
+    const evaluationPayload = {
+      ...record.evaluation,
+      _meta: {
+        datasetName: record.datasetName,
+        sheetName: record.sheetName,
+        categoryColumn: record.categoryColumn,
+        segmentValue: record.segmentValue,
+        customSteps: record.customSteps,
+        frequency: record.frequency,
+        historicalPeriod: record.historicalPeriod,
+        aggregation: record.aggregation,
+        statistics: record.statistics,
+        scenarios: record.scenarios,
+        backtestPoints: record.backtestPoints,
+        aiAnalysis: record.aiAnalysis,
+      },
+    };
+
+    const { data: inserted, error } = await client
+      .from('forecasts')
+      .insert({
+        dataset_id: resolvedDatasetId,
+        user_id: authUserId,
+        title: record.title,
+        date_column: record.dateColumn,
+        target_column: record.targetColumn,
+        method: record.method,
+        horizon: record.horizon,
+        historical_data: record.historicalData,
+        forecast_data: record.forecastData,
+        evaluation: evaluationPayload,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      const parsed = parseSupabaseError(error, 'database');
+      appendSupabaseTechLog('DATABASE', 'warning', `Gagal menyimpan forecast ke Supabase: ${parsed.userMessage}`);
+      return { success: false, message: parsed.userMessage };
+    }
+
+    appendSupabaseTechLog('DATABASE', 'success', `Forecast '${record.title}' tersimpan di tabel public.forecasts.`);
+
+    return {
+      success: true,
+      message: 'Hasil forecasting berhasil disimpan ke database Supabase (public.forecasts).',
+      savedRecord: {
+        ...record,
+        id: inserted.id,
+        datasetId: resolvedDatasetId,
+        source: 'supabase',
+        createdAt: inserted.created_at,
+      },
+    };
+  } catch (err: any) {
+    const parsed = parseSupabaseError(err, 'database');
+    return { success: false, message: parsed.userMessage };
+  }
+}
+
+export async function deleteForecastFromSupabase(forecastId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !isValidUuid(forecastId)) return false;
+
+  try {
+    const { error } = await client.from('forecasts').delete().eq('id', forecastId);
+    if (error) {
+      const parsed = parseSupabaseError(error, 'database');
+      appendSupabaseTechLog('DATABASE', 'warning', `Gagal menghapus forecast: ${parsed.userMessage}`);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+

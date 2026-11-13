@@ -3,6 +3,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import {
+  runAdvancedForecastPipeline,
+  compareForecastModels,
+  prepareTimeSeries,
+  computeTimeSeriesStats,
+} from './src/utils/forecasting';
 
 dotenv.config();
 
@@ -301,45 +307,297 @@ Portofolio bisnis menunjukkan performa finansial yang kokoh dengan akumulasi tot
   }
 });
 
-// 4. Forecast AI Analysis Endpoint
-app.post('/api/ai/forecast-analysis', async (req, res) => {
+// 4. Deterministic Statistical Forecasting Execution Endpoint
+app.post('/api/forecast/run', (req, res) => {
   try {
-    const { metricName, horizon, method, evaluation, pointsSample } = req.body;
+    const body = req.body || {};
+    const {
+      rows,
+      dateColumn,
+      targetColumn,
+      categoryColumn,
+      segmentValue,
+      frequency,
+      historicalPeriod,
+      aggregation,
+      method,
+      horizon,
+      customSteps,
+      confidenceLevel,
+      scenarioShockPct,
+    } = body;
 
-    const prompt = `Analisis hasil peramalan statistik (Forecasting) berikut:
-- Variabel Target: ${metricName}
-- Metode Model: ${method}
-- Horizon Proyeksi: ${horizon}
-- Evaluasi Model: R² = ${evaluation?.r2}, MAE = ${evaluation?.mae}, RMSE = ${evaluation?.rmse}, MAPE = ${evaluation?.mape}%, Tren = ${evaluation?.trend}, Proyeksi Pertumbuhan = ${evaluation?.growthPercentage}%`;
-
-    let analysisText = '';
-    try {
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
-      const callPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payload rows harus berupa array objek dataset.',
+        issues: [],
       });
-      const response: any = await Promise.race([callPromise, timeoutPromise]);
-      analysisText = response?.text || '';
-    } catch {
-      analysisText = `### 📈 Evaluasi Manajerial Proyeksi Statistik
-
-1. **Keandalan Model (Statistical Reliability):**
-   Model peramalan ${method} menghasilkan koefisien determinasi **R² = ${evaluation?.r2 || 0.9}** dan **MAPE = ${evaluation?.mape || 5.2}%**. Ini mengindikasikan tingkat akurasi tinggi dan layak dijadikan landasan perencanaan kuartalan.
-
-2. **Arah Tren & Peluang Bisnis:**
-   Lintasan proyeksi menunjukkan momentum **${evaluation?.trend || 'UPWARD'}** dengan estimasi ekspansi sebesar **${evaluation?.growthPercentage || 12}%**. Manajemen memiliki jendela peluang untuk meningkatkan kapasitas layanan.
-
-3. **3 Langkah Tindakan Mitigasi:**
-   - **Buffer Stock:** Siapkan penyangga persediaan sebesar 15% di atas rata-rata kuartal sebelumnya.
-   - **Monitor Fluktuasi:** Pantau varians aktual mingguan terhadap garis prediksi model.
-   - **Hedging Biaya:** Kunci harga pengadaan barang sebelum terjadi eskalasi biaya musiman.`;
     }
 
-    res.json({ analysis: analysisText });
+    if (rows.length > 50000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Jumlah baris melebihi batas maksimum 50.000 observasi per permintaan.',
+        issues: [],
+      });
+    }
+
+    const pipelineResult = runAdvancedForecastPipeline({
+      rows,
+      dateColumn: typeof dateColumn === 'string' ? dateColumn : '',
+      targetColumn: typeof targetColumn === 'string' ? targetColumn : '',
+      categoryColumn: typeof categoryColumn === 'string' ? categoryColumn : undefined,
+      segmentValue: typeof segmentValue === 'string' ? segmentValue : undefined,
+      frequency: frequency || 'auto',
+      historicalPeriod: historicalPeriod || 'all',
+      aggregation: aggregation || 'sum',
+      method: method || 'auto',
+      horizon: horizon || '30d',
+      customSteps: customSteps !== undefined ? Number(customSteps) : undefined,
+      confidenceLevel: confidenceLevel !== undefined ? Number(confidenceLevel) as any : 0.95,
+      scenarioShockPct: scenarioShockPct !== undefined ? Number(scenarioShockPct) : 12,
+    });
+
+    if (!pipelineResult.success || !pipelineResult.result) {
+      return res.status(200).json({
+        success: false,
+        validationError: true,
+        error: pipelineResult.error || 'Dataset tidak memenuhi syarat validasi time-series.',
+        issues: pipelineResult.issues,
+        prepared: pipelineResult.prepared,
+      });
+    }
+
+    return res.json({
+      success: true,
+      issues: pipelineResult.issues,
+      prepared: pipelineResult.prepared,
+      result: pipelineResult.result,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/forecast/run:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Terjadi kesalahan internal saat menjalankan forecasting.',
+      issues: [],
+    });
+  }
+});
+
+// 5. Deterministic Multi-Model Benchmarking Endpoint
+app.post('/api/forecast/compare', (req, res) => {
+  try {
+    const body = req.body || {};
+    const {
+      rows,
+      dateColumn,
+      targetColumn,
+      categoryColumn,
+      segmentValue,
+      frequency,
+      historicalPeriod,
+      aggregation,
+    } = body;
+
+    if (!Array.isArray(rows) || rows.length > 50000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data baris tidak valid atau melebihi kapasitas.',
+        issues: [],
+      });
+    }
+
+    const prepared = prepareTimeSeries({
+      rows,
+      dateColumn: typeof dateColumn === 'string' ? dateColumn : '',
+      targetColumn: typeof targetColumn === 'string' ? targetColumn : '',
+      categoryColumn: typeof categoryColumn === 'string' ? categoryColumn : undefined,
+      segmentValue: typeof segmentValue === 'string' ? segmentValue : undefined,
+      frequency: frequency || 'auto',
+      historicalPeriod: historicalPeriod || 'all',
+      aggregation: aggregation || 'sum',
+    });
+
+    if (!prepared.valid) {
+      return res.status(200).json({
+        success: false,
+        validationError: true,
+        error: prepared.blockingError || 'Dataset tidak valid untuk benchmarking model.',
+        issues: prepared.issues,
+      });
+    }
+
+    const statistics = computeTimeSeriesStats(prepared.points, prepared.appliedFrequency);
+    const comparisons = compareForecastModels(prepared.points, statistics);
+
+    return res.json({
+      success: true,
+      appliedFrequency: prepared.appliedFrequency,
+      statistics,
+      comparisons,
+      issues: prepared.issues,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/forecast/compare:', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Gagal menjalankan komparasi model.',
+      issues: [],
+    });
+  }
+});
+
+// 6. Forecast AI Strategic Interpretation & Interactive Q&A Endpoint (gemini-4-hydrogen)
+app.post('/api/ai/forecast-analysis', async (req, res) => {
+  try {
+    const {
+      datasetName,
+      metricName,
+      dateColumn,
+      horizon,
+      horizonSteps,
+      appliedFrequency,
+      method,
+      modelName,
+      confidenceLevel,
+      evaluation,
+      statistics,
+      backtestSample,
+      pointsSample,
+      scenarios,
+      question,
+    } = req.body || {};
+
+    if (!evaluation || !metricName) {
+      return res.status(400).json({
+        error: 'Data hasil evaluasi forecasting dan target variabel wajib disediakan.',
+      });
+    }
+
+    const systemInstruction = `Anda adalah Senior Quantitative Data Scientist & Enterprise Decision Advisor.
+Tugas Anda adalah memberikan interpretasi strategis yang terukur terhadap hasil forecasting statistik dalam Bahasa Indonesia profesional.
+
+ATURAN KETAT (ANTI-HALUSINASI):
+1. DILARANG KERAS mengarang angka, persentase, atau fakta di luar konteks statistik yang diberikan.
+2. Seluruh angka yang disebut HARUS cocok persis dengan objek evaluation, statistics, scenarios, backtestSample, dan pointsSample.
+3. Jika sebuah metrik bernilai null/tidak tersedia (misalnya MAPE saat terdapat nilai aktual 0), jelaskan secara jujur dan rujuk sMAPE/RMSE sebagai pengganti.
+4. Bedakan antara proyeksi statistik sentral, rentang ketidakpastian Confidence Interval (80% & 95%), dan simulasi skenario (Optimistic/Baseline/Pessimistic).
+5. Susun jawaban WAJIB dengan 8 bagian berurutan persis seperti format berikut:
+### 1. Forecast Overview
+### 2. Trend Interpretation
+### 3. Statistical Findings
+### 4. Model Performance
+### 5. Risk Analysis
+### 6. Prediction Uncertainty
+### 7. Business Implications
+### 8. Recommended Actions
+${question ? '\nTambahkan bagian khusus di awal bernama **### Jawaban Pertanyaan Spesifik Pengguna** yang menjawab pertanyaan pengguna secara langsung berdasarkan angka aktual sebelum 8 bagian di atas.' : ''}`;
+
+    const contextPrompt = `
+KONTEKS FORECASTING TERHITUNG:
+- Dataset: ${datasetName || 'Dataset Aktif'}
+- Variabel Target: ${metricName} | Kolom Waktu: ${dateColumn || '-'} | Frekuensi: ${appliedFrequency || '-'}
+- Model Terpilih: ${modelName || method} (${method})
+- Alasan Pemilihan Model: ${evaluation?.selectionReason || '-'}
+- Parameter Model: ${JSON.stringify(evaluation?.modelParameters || {})}
+- Horizon: ${horizon} (${horizonSteps || '-'} langkah) | Tingkat Kepercayaan: ${confidenceLevel || '95% CI'}
+
+RINGKASAN STATISTIK HISTORIS:
+${JSON.stringify(statistics || {}, null, 2)}
+
+EVALUASI & BACKTESTING (TIME-SERIES SPLIT):
+${JSON.stringify(evaluation || {}, null, 2)}
+
+SAMPEL BACKTESTING AKTUAL VS PREDIKSI:
+${JSON.stringify(backtestSample || [], null, 2)}
+
+SAMPEL TITIK PROYEKSI MASA DEPAN:
+${JSON.stringify(pointsSample || [], null, 2)}
+
+ANALISIS SKENARIO:
+${JSON.stringify(scenarios ? {
+  shockPercentage: scenarios.shockPercentage,
+  optimisticFinal: scenarios.optimisticFinal,
+  baselineFinal: scenarios.baselineFinal,
+  pessimisticFinal: scenarios.pessimisticFinal,
+  optimisticMean: scenarios.optimisticMean,
+  baselineMean: scenarios.baselineMean,
+  pessimisticMean: scenarios.pessimisticMean,
+} : {}, null, 2)}
+
+${question ? `PERTANYAAN SPESIFIK PENGGUNA: "${question}"` : 'Berikan interpretasi menyeluruh 8 bagian secara padat, objektif, dan actionable.'}
+`;
+
+    let analysisText = '';
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
+        const callPromise = ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: contextPrompt,
+          config: {
+            systemInstruction,
+          },
+        });
+        const response: any = await Promise.race([callPromise, timeoutPromise]);
+        analysisText = response?.text || '';
+      } catch (err: any) {
+        console.warn('Gemini forecast analysis fallback triggered:', err?.message);
+      }
+    }
+
+    if (!analysisText) {
+      const mapeLabel = evaluation?.mapeAvailable ? `${evaluation.mape}%` : `N/A (menggunakan sMAPE ${evaluation?.smape ?? 0}%)`;
+      const fmt = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('id-ID') : '-');
+      const outlierCount = Array.isArray(statistics?.outliers) ? statistics.outliers.length : 0;
+      const changePointCount = Array.isArray(statistics?.changePoints) ? statistics.changePoints.length : 0;
+
+      const qaBlock = question
+        ? `### Jawaban Pertanyaan Spesifik Pengguna\nMenanggapi pertanyaan *"${question}"*: Berdasarkan model **${modelName || method}** untuk variabel **${metricName}**, nilai rata-rata proyeksi adalah **${fmt(evaluation?.meanProjected)}** dengan tren **${evaluation?.trend}** (${evaluation?.growthPercentage >= 0 ? '+' : ''}${evaluation?.growthPercentage}%), rentang 95% CI **[${fmt(evaluation?.ci95Lower)} s/d ${fmt(evaluation?.ci95Upper)}]**, serta akurasi out-of-sample RMSE **${fmt(evaluation?.rmse)}** dan sMAPE **${evaluation?.smape ?? 0}%**.\n\n`
+        : '';
+
+      analysisText = `${qaBlock}### 1. Forecast Overview
+Peramalan dilakukan terhadap **${metricName}** pada dataset **${datasetName || 'Dataset Aktif'}** menggunakan **${modelName || method}** untuk horizon **${horizonSteps || horizon} langkah** (${appliedFrequency || 'periodik'}). Nilai proyeksi rata-rata mencapai **${fmt(evaluation?.meanProjected)}** dengan arah tren **${evaluation?.trend}**.
+
+### 2. Trend Interpretation
+Secara historis (${statistics?.count ?? evaluation?.sampleSize ?? 0} periode), data mencatatkan perubahan kumulatif **${statistics?.percentageChange ?? 0}%** dengan rata-rata pertumbuhan per periode **${statistics?.growthRate ?? 0}%**. Ke depan, model memproyeksikan perubahan **${evaluation?.growthPercentage >= 0 ? '+' : ''}${evaluation?.growthPercentage}%** dari titik observasi terakhir.
+
+### 3. Statistical Findings
+- **Rata-rata & Median Historis:** Mean **${fmt(statistics?.mean)}**, Median **${fmt(statistics?.median)}** (Min: **${fmt(statistics?.min)}**, Max: **${fmt(statistics?.max)}**).
+- **Dispersi & Volatilitas:** StdDev **${fmt(statistics?.stdDev)}** dengan Koefisien Variasi (CV) **${statistics?.cv ?? 0}%**.
+- **Pola Musiman & Anomali:** ${statistics?.seasonalityDetected ? `Siklus musiman terdeteksi setiap ${statistics.seasonalPeriod} periode.` : 'Tidak ditemukan siklus musiman dominan.'} Terdeteksi **${outlierCount} outlier (IQR)** dan **${changePointCount} change point**.
+
+### 4. Model Performance
+- **Status Validasi:** \`${evaluation?.validationStatus}\` (${evaluation?.validationNote || '-'})
+- **Periode Train / Test:** ${evaluation?.trainingPeriod} (${evaluation?.trainCount} titik) vs ${evaluation?.testingPeriod} (${evaluation?.testCount} titik)
+- **Metrik Error:** MAE = **${fmt(evaluation?.mae)}**, RMSE = **${fmt(evaluation?.rmse)}**, MAPE = **${mapeLabel}**, sMAPE = **${evaluation?.smape ?? 0}%**, R² = **${evaluation?.r2 ?? 0}**.
+
+### 5. Risk Analysis
+Dengan CV historis **${statistics?.cv ?? 0}%** dan deviasi error backtesting RMSE **${fmt(evaluation?.rmse)}**, risiko utama terletak pada volatilitas jangka menengah serta kemungkinan pergeseran struktural apabila horizon melebihi panjang data historis. Dalam simulasi skenario pesimistis (-${scenarios?.shockPercentage ?? 12}% shock), nilai akhir berada di **${fmt(scenarios?.pessimisticFinal)}**.
+
+### 6. Prediction Uncertainty
+- **80% Confidence Interval (Rata-rata):** [${fmt(evaluation?.ci80Lower)} s/d ${fmt(evaluation?.ci80Upper)}]
+- **95% Confidence Interval (Rata-rata):** [${fmt(evaluation?.ci95Lower)} s/d ${fmt(evaluation?.ci95Upper)}]
+- *Catatan:* Prediction interval melebar seiring bertambahnya langkah waktu dan merepresentasikan estimasi ketidakpastian statistik berdasarkan residual historis, bukan jaminan kepastian absolut.
+
+### 7. Business Implications
+Rentang baseline (**${fmt(scenarios?.baselineFinal)}** di akhir horizon) vs optimis (**${fmt(scenarios?.optimisticFinal)}**) dan pesimis (**${fmt(scenarios?.pessimisticFinal)}**) memberikan koridor perencanaan anggaran, kapasitas operasional, dan manajemen inventori yang terkuantifikasi risiko.
+
+### 8. Recommended Actions
+1. **Rencanakan Kapasitas Berbasis 80% CI:** Gunakan koridor [${fmt(evaluation?.ci80Lower)} – ${fmt(evaluation?.ci80Upper)}] sebagai target operasi normal.
+2. **Siapkan Kontinjensi Batas Bawah 95% CI:** Tetapkan rencana mitigasi biaya apabila realisasi aktual turun mendekati **${fmt(evaluation?.ci95Lower)}**.
+3. **Evaluasi Rolling Periodik:** Bandingkan nilai aktual baru terhadap backtest error (MAE **${fmt(evaluation?.mae)}**) setiap siklus ${appliedFrequency || 'berikutnya'} dan kalibrasi ulang model bila terjadi deviasi > 2×RMSE.`;
+    }
+
+    return res.json({
+      analysis: analysisText,
+      model: process.env.GEMINI_API_KEY ? 'gemini-4-hydrogen' : 'statistical-deterministic-engine',
+      timestamp: new Date().toISOString(),
+    });
   } catch (error: any) {
     console.error('Error in /api/ai/forecast-analysis:', error);
-    res.status(500).json({ error: error?.message || 'Failed to analyze forecast' });
+    return res.status(500).json({ error: error?.message || 'Failed to analyze forecast' });
   }
 });
 
