@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
-import { SEED_DATASETS, StoredDataset } from '../data/seedDatasets';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
+import { SEED_DATASETS, StoredDataset, LineageStep } from '../data/seedDatasets';
 import { analyzeDataset, DatasetStats } from '../utils/analytics';
+import { runIntelligencePipeline, IntelligenceReport } from '../utils/intelligenceEngine';
 import { DEFAULT_ADMIN_PROFILE, DEFAULT_USER_PROFILE, UserProfile } from '../lib/supabase';
 import { generateUniqueId } from '../utils/idGenerator';
 import { useTheme } from './ThemeContext';
@@ -93,9 +94,21 @@ interface AppContextType {
   activeSheet: string;
   setActiveSheet: (sheetName: string) => void;
   currentStats: DatasetStats;
+  intelligenceReport: IntelligenceReport;
   addDataset: (dataset: StoredDataset, sourceFile?: File) => void;
   deleteDataset: (id: string) => void;
-  saveCleanedDataset: (cleanedData: Record<string, any>[], name: string) => void;
+  saveCleanedDataset: (cleanedData: Record<string, any>[], name: string, lineageDetails?: string) => void;
+  saveTransformedDataset: (
+    transformedData: Record<string, any>[],
+    name: string,
+    action: string,
+    details: string,
+    sourceType?: 'transformed' | 'merged'
+  ) => StoredDataset;
+  appendDatasetLineage: (
+    datasetId: string,
+    step: Omit<LineageStep, 'id' | 'timestamp' | 'userName'>
+  ) => void;
   activityLogs: ActivityLogItem[];
   logActivity: (action: string, entityType: string, entityName: string, details?: string) => void;
   darkMode: boolean;
@@ -561,12 +574,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     logActivity('SWITCH_DATASET', 'Dataset', target?.name || id);
   };
 
-  const currentStats: DatasetStats = React.useMemo(() => {
+  const currentStats: DatasetStats = useMemo(() => {
     if (!selectedDataset || !selectedDataset.data) {
       return analyzeDataset([]);
     }
     return analyzeDataset(selectedDataset.data);
   }, [selectedDataset, selectedDataset?.data]);
+
+  const intelligenceReport: IntelligenceReport = useMemo(() => {
+    return runIntelligencePipeline(selectedDataset, selectedDataset?.data);
+  }, [selectedDataset, selectedDataset?.data, activeSheet]);
 
   const logActivity = (action: string, entityType: string, entityName: string, details?: string) => {
     const newLog: ActivityLogItem = {
@@ -639,7 +656,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const saveCleanedDataset = (cleanedData: Record<string, any>[], name: string) => {
+  const appendDatasetLineage = useCallback(
+    (datasetId: string, step: Omit<LineageStep, 'id' | 'timestamp' | 'userName'>) => {
+      const fullStep: LineageStep = {
+        ...step,
+        id: generateUniqueId('lin'),
+        timestamp: new Date().toISOString(),
+        userName: currentUser.fullName,
+      };
+      setDatasets(prev =>
+        prev.map(d =>
+          d.id === datasetId ? { ...d, lineage: [...(d.lineage || []), fullStep] } : d
+        )
+      );
+    },
+    [currentUser.fullName]
+  );
+
+  const saveCleanedDataset = (cleanedData: Record<string, any>[], name: string, lineageDetails?: string) => {
+    const parentLineage = selectedDataset?.lineage || [];
+    const newStep: LineageStep = {
+      id: generateUniqueId('lin'),
+      timestamp: new Date().toISOString(),
+      stage: 'CLEANING',
+      action: 'DATA_CLEANING_COMMITTED',
+      details: lineageDetails || `Pembersihan & normalisasi ${cleanedData.length} baris dari ${selectedDataset?.name || 'dataset'}`,
+      userName: currentUser.fullName,
+      inputRows: selectedDataset?.data?.length || 0,
+      outputRows: cleanedData.length,
+      sourceRef: selectedDataset?.id,
+    };
     const newDs: StoredDataset = {
       id: generateUniqueId('ds_clean'),
       name: `${name} (Cleaned)`,
@@ -651,9 +697,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       data: cleanedData,
       isCleaned: true,
       originalId: selectedDataset?.id,
+      analysisMode: selectedDataset?.analysisMode || 'structured',
+      sourceMeta: {
+        sourceType: 'cleaned',
+        extractedAt: new Date().toISOString(),
+        provenanceNote: `Cleaned from ${selectedDataset?.name || 'original'}`,
+      },
+      lineage: [...parentLineage, newStep],
     };
     addDataset(newDs);
     addToast('success', 'Data Hasil Pembersihan Disimpan', 'Dataset bersih baru telah dibuat terpisah dari data asli.');
+  };
+
+  const saveTransformedDataset = (
+    transformedData: Record<string, any>[],
+    name: string,
+    action: string,
+    details: string,
+    sourceType: 'transformed' | 'merged' = 'transformed'
+  ): StoredDataset => {
+    const parentLineage = selectedDataset?.lineage || [];
+    const newStep: LineageStep = {
+      id: generateUniqueId('lin'),
+      timestamp: new Date().toISOString(),
+      stage: 'TRANSFORMATION',
+      action,
+      details,
+      userName: currentUser.fullName,
+      inputRows: selectedDataset?.data?.length || 0,
+      outputRows: transformedData.length,
+      sourceRef: selectedDataset?.id,
+    };
+    const newDs: StoredDataset = {
+      id: generateUniqueId('ds_etl'),
+      name,
+      description: details,
+      fileName: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.csv`,
+      fileType: 'csv',
+      fileSize: Math.max(1024, JSON.stringify(transformedData).length),
+      uploadedAt: new Date().toISOString(),
+      data: transformedData,
+      isCleaned: true,
+      originalId: selectedDataset?.id,
+      analysisMode: 'structured',
+      sourceMeta: {
+        sourceType,
+        extractedAt: new Date().toISOString(),
+        provenanceNote: details,
+      },
+      lineage: [...parentLineage, newStep],
+    };
+    addDataset(newDs);
+    logActivity(action, 'ETL Transformation', name, details);
+    return newDs;
   };
 
   const switchRole = (role: 'admin' | 'user') => {
@@ -874,9 +970,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         activeSheet,
         setActiveSheet,
         currentStats,
+        intelligenceReport,
         addDataset,
         deleteDataset,
         saveCleanedDataset,
+        saveTransformedDataset,
+        appendDatasetLineage,
         activityLogs,
         logActivity,
         darkMode,

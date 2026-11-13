@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { generateUniqueId } from '../../utils/idGenerator';
+import { executeDeterministicQuery } from '../../utils/intelligenceEngine';
 import {
   BotMessageSquare,
   Send,
@@ -8,7 +9,8 @@ import {
   RefreshCw,
   Copy,
   Check,
-  HelpCircle
+  HelpCircle,
+  Table2,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -16,35 +18,48 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  intentSummary?: string;
+  evidenceTable?: Record<string, any>[];
 }
 
 export const AiDataAnalyst: React.FC = () => {
-  const { selectedDataset, currentStats, logActivity, addToast } = useApp();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'init-1',
-      role: 'assistant',
-      content: `Halo! Saya adalah **Smart AI Data Analyst** berbasis Google Gemini.
+  const { selectedDataset, currentStats, intelligenceReport, logActivity, addToast } = useApp();
 
-Saya telah menganalisis dataset aktif **${selectedDataset?.name || 'Dataset'}** (${selectedDataset?.data?.length || 0} baris, ${currentStats.colCount} kolom).
+  const buildWelcomeMessage = (): ChatMessage => ({
+    id: generateUniqueId('init'),
+    role: 'assistant',
+    content: `Halo! Saya adalah **Smart AI Data Analyst** terintegrasi dengan **Deterministic Analytical Engine** & Google Gemini.
 
-Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai performa metrik, korelasi, perbandingan wilayah/kategori, deteksi anomali, atau rekomendasi keputusan berbasis data aktual.`,
-      timestamp: new Date().toISOString()
-    }
-  ]);
+Saya telah memprofilkan dataset aktif **${selectedDataset?.name || 'Dataset'}** (${selectedDataset?.data?.length || 0} baris, ${currentStats.colCount} kolom, Data Quality Score: **${intelligenceReport.profile.quality.overallScore}/100**, Mode: **${intelligenceReport.analysisMode === 'document' ? 'Document Intelligence' : 'Structured Analytics'}**).
 
+Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia — setiap jawaban memadukan kalkulasi aktual di browser agar angka akurat dan bebas halusinasi.`,
+    timestamp: new Date().toISOString(),
+  });
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [buildWelcomeMessage()]);
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const suggestedQuestions = [
-    'Apa kesimpulan dan temuan paling krusial dari data ini?',
-    'Berapa total penjualan dan produk mana dengan performa terbaik?',
-    'Wilayah atau kategori mana yang menghasilkan kontribusi margin tertinggi?',
-    'Apakah terdapat anomali atau outliers yang berisiko pada data?',
-    'Bagaimana rekomendasi keputusan strategis untuk meningkatkan revenue?'
-  ];
+  useEffect(() => {
+    setMessages([buildWelcomeMessage()]);
+  }, [selectedDataset?.id]);
+
+  const suggestedQuestions =
+    intelligenceReport.analysisMode === 'document'
+      ? [
+          'Apa ringkasan poin dan temuan terpenting dari dokumen ini?',
+          'Bagian atau tabel mana yang paling krusial dalam dokumen ini?',
+          'Rekomendasi tindakan apa yang perlu segera ditindaklanjuti?',
+        ]
+      : [
+          'Apa kesimpulan dan temuan paling krusial dari data ini?',
+          `Bagaimana perbandingan ${currentStats.numericCols[0] || 'metrik'} per ${currentStats.categoricalCols[0] || 'kategori'}?`,
+          'Apakah terdapat anomali atau outliers yang berisiko pada data?',
+          'Variabel apa yang memiliki korelasi terkuat dan apa implikasinya?',
+          'Bagaimana rekomendasi keputusan strategis berdasarkan hasil evaluasi?',
+        ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,12 +77,39 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
       id: generateUniqueId('msg-user'),
       role: 'user',
       content: text,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputQuery('');
     setIsLoading(true);
+
+    const deterministicCtx = executeDeterministicQuery(
+      text,
+      selectedDataset,
+      intelligenceReport
+    );
+
+    const intelligenceSummary = {
+      analysisMode: intelligenceReport.analysisMode,
+      dataPeriod: intelligenceReport.dataPeriod,
+      qualityScore: intelligenceReport.profile.quality,
+      topCorrelations: intelligenceReport.eda.topCorrelations.slice(0, 5),
+      inferentialTests: intelligenceReport.statistics.inferentialTests
+        .filter(t => t.executed)
+        .map(t => ({
+          testName: t.testName,
+          variables: t.variables,
+          statistic: `${t.statisticName}=${t.statisticValue}`,
+          pValue: t.pValue,
+          significantAt05: t.significantAt05,
+        })),
+      regression: intelligenceReport.mining.regression.executed
+        ? intelligenceReport.mining.regression
+        : null,
+      anomaliesCount: intelligenceReport.mining.anomalies.length,
+      forecastingAvailable: intelligenceReport.forecasting.available,
+    };
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -77,10 +119,12 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
           datasetName: selectedDataset?.name,
           schema: currentStats.columns,
           stats: currentStats,
-          sampleData: selectedDataset?.data?.slice(0, 20) || [],
+          sampleData: selectedDataset?.data?.slice(0, 15) || [],
           query: text,
-          history: messages.slice(-4)
-        })
+          history: messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+          computedFacts: deterministicCtx.computedFactsMarkdown,
+          intelligenceSummary,
+        }),
       });
 
       if (!res.ok) {
@@ -93,23 +137,32 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
         id: generateUniqueId('ai-resp'),
         role: 'assistant',
         content: data.answer,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        intentSummary: deterministicCtx.intentSummary,
+        evidenceTable: deterministicCtx.evidenceTable,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      logActivity('AI_ANALYSIS', 'AI Analyst', selectedDataset?.name || 'Dataset', `Query: "${text.slice(0, 40)}..."`);
+      logActivity(
+        'AI_ANALYSIS',
+        'AI Analyst',
+        selectedDataset?.name || 'Dataset',
+        `Query: "${text.slice(0, 40)}..."`
+      );
     } catch (err: any) {
       console.error(err);
-      addToast('error', 'AI Analyst Terkendala', err.message || 'Gagal memproses respon.');
       setMessages(prev => [
         ...prev,
         {
-          id: generateUniqueId('ai-err'),
+          id: generateUniqueId('ai-det-fallback'),
           role: 'assistant',
-          content: `⚠️ **Gagal memproses kueri:** ${err.message}\n\nPastikan konfigurasi API Key Gemini aktif di environment server (Settings > Secrets).`,
-          timestamp: new Date().toISOString()
-        }
+          content: `### Hasil Analisis Deterministik (${selectedDataset?.name || 'Dataset'})\n\n${deterministicCtx.computedFactsMarkdown}\n\n_(Catatan: Koneksi AI server sedang fallback (${err.message}); angka di atas dihitung langsung dari data aktual.)_`,
+          timestamp: new Date().toISOString(),
+          intentSummary: deterministicCtx.intentSummary,
+          evidenceTable: deterministicCtx.evidenceTable,
+        },
       ]);
+      addToast('warning', 'Mode Fallback Deterministik', 'Menampilkan hasil kalkulasi lokal terverifikasi.');
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +185,7 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
             <span className="truncate">AI Data Analyst & Conversational Intelligence</span>
           </h1>
           <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            Tanya jawab data interaktif dengan Google Gemini API berbasis data aktual.
+            Tanya jawab data interaktif dengan Deterministic Query Engine + Google Gemini API bebas halusinasi.
           </p>
         </div>
 
@@ -142,7 +195,7 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
           </span>
           <button
             type="button"
-            onClick={() => setMessages([messages[0]])}
+            onClick={() => setMessages([buildWelcomeMessage()])}
             className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-main)] hover:bg-[var(--bg-caramel-soft)] transition-theme cursor-pointer"
             title="Reset Percakapan"
             aria-label="Reset Percakapan"
@@ -195,6 +248,42 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
               >
                 <div className="whitespace-pre-wrap font-sans space-y-2">{msg.content}</div>
 
+                {/* Compact Evidence Table */}
+                {!isUser && msg.evidenceTable && msg.evidenceTable.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-[var(--border-color)] space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
+                      <Table2 className="w-3.5 h-3.5" />
+                      <span>Bukti Agregasi Terhitung ({msg.intentSummary})</span>
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-[var(--border-color)]">
+                      <table className="w-full text-[11px] text-left">
+                        <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                          <tr>
+                            {Object.keys(msg.evidenceTable[0]).map(col => (
+                              <th key={col} className="px-2.5 py-1.5 font-semibold whitespace-nowrap">
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border-color)]">
+                          {msg.evidenceTable.map((r, rIdx) => (
+                            <tr key={rIdx}>
+                              {Object.keys(msg.evidenceTable![0]).map(col => (
+                                <td key={col} className="px-2.5 py-1.5 tabular-nums whitespace-nowrap">
+                                  {typeof r[col] === 'number'
+                                    ? Number(r[col]).toLocaleString('id-ID')
+                                    : String(r[col] ?? '-')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 <div
                   className={`flex items-center justify-between pt-2 mt-2 border-t text-[10px] ${
                     isUser
@@ -242,7 +331,7 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
               <RefreshCw className="w-4 h-4 animate-spin text-[var(--color-primary)]" />
             </div>
             <div className="surface-card p-3.5 rounded-2xl text-[var(--text-secondary)] flex items-center gap-2">
-              <span>Menganalisis dataset aktual & menyusun evaluasi...</span>
+              <span>Menghitung bukti empiris & menyusun evaluasi AI...</span>
             </div>
           </div>
         )}
@@ -265,7 +354,7 @@ Silakan ajukan pertanyaan analisis bisnis dalam Bahasa Indonesia mengenai perfor
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
             disabled={isLoading}
-            placeholder="Tanyakan analisis apa pun tentang dataset ini (misal: 'Berapa rata-rata margin dan di mana risikonya?')..."
+            placeholder="Tanyakan analisis apa pun tentang dataset ini (misal: 'Berapa rata-rata nilai dan di mana risikonya?')..."
             className="flex-1 bg-transparent px-3 py-2 text-xs text-[var(--text-main)] placeholder-[var(--text-secondary)] focus:outline-none"
           />
           <button

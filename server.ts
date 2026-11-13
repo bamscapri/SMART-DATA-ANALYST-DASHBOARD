@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import dns from 'dns/promises';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -9,6 +10,11 @@ import {
   prepareTimeSeries,
   computeTimeSeriesStats,
 } from './src/utils/forecasting';
+import {
+  validateExternalUrl,
+  isPrivateOrReservedIp,
+  detectSourceFormat,
+} from './src/utils/ssrfGuard';
 
 dotenv.config();
 
@@ -31,6 +37,118 @@ const ai = new GoogleGenAI({
   },
 });
 
+const GEMINI_MODEL = 'gemini-4-hydrogen';
+const MAX_REMOTE_FETCH_BYTES = 25 * 1024 * 1024; // 25 MB cap
+const REMOTE_FETCH_TIMEOUT_MS = 15000;
+
+async function assertHostnameSafe(hostname: string): Promise<void> {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) {
+    if (isPrivateOrReservedIp(hostname)) {
+      throw new Error(`Akses ke IP internal '${hostname}' diblokir oleh kebijakan SSRF.`);
+    }
+    return;
+  }
+  const records = await dns.lookup(hostname, { all: true });
+  if (!records || records.length === 0) {
+    throw new Error(`DNS tidak dapat meresolusi hostname '${hostname}'.`);
+  }
+  for (const rec of records) {
+    if (isPrivateOrReservedIp(rec.address)) {
+      throw new Error(
+        `Hostname '${hostname}' merujuk ke alamat IP internal/privat (${rec.address}) yang diblokir.`
+      );
+    }
+  }
+}
+
+async function fetchExternalSafe(rawUrl: string): Promise<{
+  finalUrl: string;
+  buffer: Buffer;
+  contentType: string;
+  contentDisposition: string;
+}> {
+  let currentUrl = rawUrl;
+  for (let hop = 0; hop <= 3; hop++) {
+    const validation = validateExternalUrl(currentUrl);
+    if (!validation.valid || !validation.normalizedUrl || !validation.hostname) {
+      throw new Error(validation.reason || 'URL tidak valid.');
+    }
+    await assertHostnameSafe(validation.hostname);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REMOTE_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(validation.normalizedUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'SmartAIDataAnalyst/1.0 (+https://ai.studio)',
+          Accept: '*/*',
+        },
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) {
+          throw new Error(`Server mengembalikan redirect HTTP ${response.status} tanpa target.`);
+        }
+        currentUrl = new URL(location, validation.normalizedUrl).toString();
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Server sumber mengembalikan HTTP ${response.status} (${response.statusText}).`);
+      }
+
+      const contentLength = Number(response.headers.get('content-length') || '0');
+      if (contentLength > MAX_REMOTE_FETCH_BYTES) {
+        throw new Error('Ukuran file sumber melebihi batas maksimum 25 MB.');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        const arrBuf = await response.arrayBuffer();
+        const buf = Buffer.from(arrBuf);
+        if (buf.byteLength > MAX_REMOTE_FETCH_BYTES) {
+          throw new Error('Ukuran file sumber melebihi batas maksimum 25 MB.');
+        }
+        return {
+          finalUrl: validation.normalizedUrl,
+          buffer: buf,
+          contentType: response.headers.get('content-type') || '',
+          contentDisposition: response.headers.get('content-disposition') || '',
+        };
+      }
+
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > MAX_REMOTE_FETCH_BYTES) {
+            reader.cancel().catch(() => {});
+            throw new Error('Ukuran unduhan melebihi batas maksimum 25 MB.');
+          }
+          chunks.push(value);
+        }
+      }
+
+      return {
+        finalUrl: validation.normalizedUrl,
+        buffer: Buffer.concat(chunks.map(c => Buffer.from(c))),
+        contentType: response.headers.get('content-type') || '',
+        contentDisposition: response.headers.get('content-disposition') || '',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error('Terlalu banyak pengalihan (redirect > 3 kali).');
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -40,33 +158,139 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 1. AI Chat Endpoint (AI Data Analyst)
-app.post('/api/ai/chat', async (req, res) => {
+// 0A. Safe URL Ingestion Proxy Endpoint (CSV / Excel / PDF / DOCX / JSON API)
+app.post('/api/ingest/url', async (req, res) => {
   try {
-    const { datasetName, schema, stats, sampleData, query, history } = req.body;
+    const { url } = req.body || {};
+    if (typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ error: 'Parameter url wajib diisi.' });
+    }
 
+    const fetched = await fetchExternalSafe(url.trim());
+    const format = detectSourceFormat(
+      fetched.finalUrl,
+      fetched.contentType,
+      fetched.contentDisposition
+    );
+
+    let fileName = 'remote_dataset.' + format;
+    const cdMatch = fetched.contentDisposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
+    if (cdMatch && cdMatch[1]) {
+      fileName = decodeURIComponent(cdMatch[1]).replace(/[/\\]/g, '_');
+    } else {
+      const pathPart = new URL(fetched.finalUrl).pathname.split('/').filter(Boolean).pop();
+      if (pathPart) fileName = pathPart;
+    }
+
+    return res.json({
+      success: true,
+      finalUrl: fetched.finalUrl,
+      fileName,
+      format,
+      mimeType: fetched.contentType,
+      byteLength: fetched.buffer.byteLength,
+      base64Content: fetched.buffer.toString('base64'),
+    });
+  } catch (error: any) {
+    const msg = error?.name === 'AbortError'
+      ? 'Batas waktu unduhan dari URL terlampaui (15 detik).'
+      : error?.message || 'Gagal mengunduh sumber data dari URL.';
+    return res.status(400).json({ success: false, error: msg });
+  }
+});
+
+// 0B. Scanned PDF OCR Endpoint using Gemini Vision (gemini-4-hydrogen)
+app.post('/api/ai/ocr-pdf', async (req, res) => {
+  try {
+    const { fileName, pages } = req.body || {};
+    if (!Array.isArray(pages) || pages.length === 0) {
+      return res.status(400).json({ error: 'Halaman gambar PDF diperlukan untuk OCR.' });
+    }
     if (!process.env.GEMINI_API_KEY) {
       return res.status(503).json({
-        error: 'GEMINI_API_KEY is not configured on the server. Please configure it in Settings > Secrets.',
+        error: 'GEMINI_API_KEY belum dikonfigurasi sehingga OCR PDF tidak dapat dijalankan.',
       });
     }
+
+    const parts: any[] = [
+      {
+        text: `Anda adalah engine OCR Enterprise yang mengekstrak seluruh teks dan tabel dari dokumen PDF scan bernama "${fileName || 'document.pdf'}".
+Kembalikan JSON dengan format persis:
+{
+  "text": "seluruh teks terstruktur yang terbaca dari gambar halaman",
+  "tables": [
+    {
+      "title": "Judul Tabel",
+      "pageNumber": 1,
+      "rows": [{ "Kolom1": "nilai", "Kolom2": 123 }]
+    }
+  ]
+}
+Jika tidak ada tabel, kembalikan "tables": []. Jangan mengarang angka yang tidak terbaca pada gambar.`,
+      },
+    ];
+
+    for (const p of pages.slice(0, 3)) {
+      if (p?.base64Png) {
+        parts.push({
+          inlineData: {
+            mimeType: 'image/png',
+            data: String(p.base64Png),
+          },
+        });
+      }
+    }
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('OCR timeout')), 15000)
+    );
+    const callPromise = ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role: 'user', parts }],
+      config: { responseMimeType: 'application/json' },
+    });
+
+    const response: any = await Promise.race([callPromise, timeoutPromise]);
+    const parsed = JSON.parse(response?.text || '{}');
+    return res.json({
+      success: true,
+      text: parsed.text || '',
+      tables: Array.isArray(parsed.tables) ? parsed.tables : [],
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Gagal menjalankan OCR pada PDF scan.',
+    });
+  }
+});
+
+// 1. AI Chat Endpoint (AI Data Analyst - Grounded Deterministic + Gemini)
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const {
+      datasetName,
+      stats,
+      sampleData,
+      query,
+      history,
+      computedFacts,
+      intelligenceSummary,
+    } = req.body || {};
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required.' });
     }
 
-    const systemInstruction = `Anda adalah SENIOR AI DATA ANALYST & DECISION SUPPORT SYSTEM untuk perusahaan enterprise.
+    const systemInstruction = `Anda adalah SENIOR AI DATA ANALYST, DATA SCIENTIST, & DECISION SUPPORT SYSTEM untuk perusahaan enterprise.
 Tugas Anda adalah menganalisis data aktual dan menjawab pertanyaan pengguna dalam Bahasa Indonesia profesional.
 
-ATURAN KETAT:
-1. JANGAN PERNAH mengarang angka atau fakta. Seluruh kalkulasi, tren, dan kesimpulan HARUS bersumber langsung dari data aktual yang disediakan di context.
-2. Jika data tidak mencukupi untuk menjawab pertanyaan, nyatakan secara eksplisit dan jujur bahwa data belum cukup.
-3. Bedakan secara jelas antara korelasi, indikasi, dan sebab-akibat (kausalitas).
-4. Di setiap jawaban, sebutkan:
-   - Nama kolom/variabel yang dianalisis
-   - Angka metrik spesifik (nilai, rata-rata, persentase perubahan)
-   - Rekomendasi keputusan bisnis konkret berbasis data.
-5. Gunakan format Markdown yang rapi dengan bullet points, tabel ringkas jika relevan, dan sorotan bold pada angka kunci.`;
+ATURAN KETAT (ANTI-HALUSINASI):
+1. JANGAN PERNAH mengarang angka, persentase, atau fakta di luar data & kalkulasi empiris yang diberikan di context.
+2. Jika data tidak mencukupi (misal tidak ada kolom tanggal atau nilai kosong tinggi), nyatakan secara eksplisit dan jujur.
+3. Bedakan secara jelas antara: Fakta Terukur, Korelasi Statistik (bukan kausalitas), Dugaan Penyebab, dan Langkah Uji Lanjutan.
+4. Di setiap jawaban, sebutkan nama kolom/variabel, angka spesifik pendukung, serta rekomendasi bisnis konkret yang actionable.
+5. Gunakan format Markdown yang rapi dengan tabel ringkas atau bullet points terstruktur.`;
 
     const contextPrompt = `
 INFORMASI DATASET:
@@ -75,15 +299,26 @@ INFORMASI DATASET:
 - Kolom Numerik: ${JSON.stringify(stats?.numericCols || [])}
 - Kolom Tanggal: ${JSON.stringify(stats?.dateCols || [])}
 - Kolom Kategori: ${JSON.stringify(stats?.categoricalCols || [])}
-- Ringkasan Statistik Kolom: ${JSON.stringify(stats?.columns?.map((c: any) => ({
-      name: c.name,
-      type: c.type,
-      stats: c.stats,
-      sampleValues: c.sampleValues
-    })) || [])}
 
-SAMPEL DATA AKTUAL (15 baris pertama):
-${JSON.stringify(sampleData || [], null, 2)}
+HASIL KALKULASI DETERMINISTIK UNTUK KUERI INI:
+${computedFacts || 'Belum ada ringkasan lookup terhitung.'}
+
+RINGKASAN PROFIL, KORELASI & UJI STATISTIK TERHITUNG:
+${JSON.stringify(intelligenceSummary || {}, null, 2)}
+
+STATISTIK KOLOM:
+${JSON.stringify(
+  stats?.columns?.map((c: any) => ({
+    name: c.name,
+    type: c.type,
+    missingCount: c.missingCount,
+    uniqueCount: c.uniqueCount,
+    stats: c.stats,
+  })) || []
+)}
+
+SAMPEL DATA AKTUAL (Maks 12 baris):
+${JSON.stringify((sampleData || []).slice(0, 12), null, 2)}
 
 RIWAYAT PERCAKAPAN SEBELUMNYA:
 ${Array.isArray(history) ? history.slice(-4).map((h: any) => `${h.role}: ${h.content}`).join('\n') : 'None'}
@@ -93,107 +328,79 @@ ${query}
 `;
 
     let responseText = '';
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest'];
-    let lastError: any = null;
-
-    for (const modelName of modelsToTry) {
+    if (process.env.GEMINI_API_KEY) {
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 8000));
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timed out')), 12000)
+        );
         const callPromise = ai.models.generateContent({
-          model: modelName,
+          model: GEMINI_MODEL,
           contents: contextPrompt,
-          config: {
-            systemInstruction,
-          },
+          config: { systemInstruction },
         });
         const response: any = await Promise.race([callPromise, timeoutPromise]);
         if (response && response.text) {
           responseText = response.text;
-          break;
         }
       } catch (err: any) {
-        lastError = err;
-        console.warn(`Model ${modelName} failed or timed out:`, err.message);
+        console.warn(`Gemini chat fallback (${GEMINI_MODEL}):`, err?.message);
       }
     }
 
-    // If upstream is still experiencing temporary 503, provide smart grounded analytical response
     if (!responseText) {
-      const revCol = stats?.columns?.find((c: any) => c.name.toLowerCase().includes('revenue') || c.name.toLowerCase().includes('sales') || c.type === 'numeric');
-      const prodCol = stats?.columns?.find((c: any) => c.name.toLowerCase().includes('product') || c.name.toLowerCase().includes('item') || c.type === 'categorical');
-      const sumVal = revCol?.stats?.sum ? `Rp ${revCol.stats.sum.toLocaleString('id-ID')}` : 'N/A';
-      const meanVal = revCol?.stats?.mean ? `Rp ${revCol.stats.mean.toLocaleString('id-ID')}` : 'N/A';
+      responseText = `### Hasil Analisis Data Terverifikasi: ${datasetName || 'Dataset'}
 
-      responseText = `### 📊 Hasil Analisis Data Aktual: ${datasetName || 'Dataset'}
+${computedFacts || `Berdasarkan evaluasi terhadap **${stats?.rowCount || 0} baris** dan **${stats?.colCount || 0} kolom**.`}
 
-Berdasarkan kalkulasi empiris terhadap **${stats?.rowCount || 0} baris data transaksi**:
-
-1. **Total Akumulasi & Rata-rata Nilai:**
-   - **Variabel Utama:** \`${revCol?.name || 'Metrik Utama'}\`
-   - **Total Penjualan/Nilai Keseluruhan:** **${sumVal}**
-   - **Rata-Rata per Transaksi (AOV):** **${meanVal}**
-   - **Nilai Tertinggi (Maksimum):** **Rp ${revCol?.stats?.max?.toLocaleString('id-ID') || 0}**
-
-2. **Performa Segmen & Entitas Teratas:**
-   - Observasi kategori menunjukkan lini teratas menghasilkan kontribusi lebih dari **60%** terhadap total nilai.
-   - Variabel \`${prodCol?.name || 'Kategori'}\` mencatatkan frekuensi transaksi dan perputaran volume tertinggi.
-
-3. **Rekomendasi Keputusan Bisnis:**
-   - **Fokus Inventori:** Tingkatkan alokasi stok untuk produk dalam kuartil atas (Q3).
-   - **Efisiensi Channel:** Pertahankan margin kontribusi tanpa diskon berlebih pada channel B2B.
-
-*(Catatan: Analisis ini dihitung langsung dari data aktual dataset ${datasetName})*`;
+#### Catatan Metodologis & Rekomendasi
+- Seluruh angka di atas dihitung secara deterministik langsung dari baris aktual dataset **${datasetName || 'aktif'}**.
+- Pastikan untuk membedakan korelasi antar variabel numerik dengan hubungan sebab-akibat langsung sebelum menetapkan intervensi operasional.
+- Tinjau tab **Automated Insights** dan **Data Explorer** untuk melihat bukti p-value, segmentasi K-Means, serta profil anomali per baris.`;
     }
 
-    res.json({
+    return res.json({
       answer: responseText,
       timestamp: new Date().toISOString(),
-      model: 'gemini-3.8-flash',
+      model: process.env.GEMINI_API_KEY && responseText ? GEMINI_MODEL : 'deterministic-analytical-engine',
     });
   } catch (error: any) {
     console.error('Error in /api/ai/chat:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error?.message || 'Failed to process AI query',
     });
   }
 });
 
-// 2. Automated Insights Endpoint
+// 2. Automated Insights Enrichment Endpoint (Grounded in computed IntelligenceReport)
 app.post('/api/ai/insights', async (req, res) => {
   try {
-    const { datasetName, stats, sampleData } = req.body;
+    const { datasetName, computedInsights, intelligenceSummary } = req.body || {};
+
+    if (!Array.isArray(computedInsights)) {
+      return res.status(400).json({ error: 'computedInsights array diperlukan.' });
+    }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(503).json({
-        error: 'GEMINI_API_KEY is not configured on the server.',
+      return res.json({
+        insights: computedInsights,
+        source: 'deterministic-intelligence-engine',
       });
     }
 
-    const systemInstruction = `Anda adalah automated insight engine. Hasilkan tepat 6 temuan analisis mendalam berdasarkan data aktual dalam format JSON.
-Format respon HARUS berupa JSON array dengan struktur:
-[
-  {
-    "id": "ins-1",
-    "title": "Judul Insight Singkat",
-    "explanation": "Penjelasan detail berbasis data aktual",
-    "supportingNumber": "Rp 1,29 Miliar (atau persentase / rasio spesifik)",
-    "sourceColumn": "Revenue & Region",
-    "priority": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
-    "category": "KEY_FINDING" | "POSITIVE_TREND" | "NEGATIVE_TREND" | "ANOMALY" | "OPPORTUNITY" | "RISK",
-    "recommendedAction": "Tindakan mitigasi atau akselerasi bisnis"
-  }
-]`;
+    const systemInstruction = `Anda adalah Senior Strategic Data Analyst. Tugas Anda adalah memperhalus narasi dan rekomendasi tindakan dari daftar insights yang SUDAH DIHITUNG secara statistik.
+ATURAN KETAT:
+- DILARANG mengubah atau mengarang angka/p-value/persentase pada field statisticalEvidence & supportingValues.
+- Pertahankan struktur JSON array dan semua field exact (id, title, category, finding, statisticalEvidence, supportingValues, relatedColumns, dataPeriod, sourceDataset, impactLevel, confidenceLevel, recommendedAction).`;
 
-    const prompt = `Analisis dataset "${datasetName || 'Dataset'}":
-Statistik Kolom: ${JSON.stringify(stats?.columns || [])}
-Sampel Data: ${JSON.stringify(sampleData || [])}
-Hasilkan 6 insight konkret (Key Findings, Positive/Negative Trends, Anomaly, Opportunity, Risk) dalam format JSON array murni.`;
+    const prompt = `Dataset: "${datasetName || 'Dataset'}"
+Ringkasan Statistik: ${JSON.stringify(intelligenceSummary || {})}
+Daftar Insight Terhitung (perhalus narasi Bahasa Indonesia & ketajaman rekomendasi tanpa mengubah angka):
+${JSON.stringify(computedInsights, null, 2)}`;
 
-    let insights = [];
     try {
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000));
       const callPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: GEMINI_MODEL,
         contents: prompt,
         config: {
           systemInstruction,
@@ -201,109 +408,74 @@ Hasilkan 6 insight konkret (Key Findings, Positive/Negative Trends, Anomaly, Opp
         },
       });
       const response: any = await Promise.race([callPromise, timeoutPromise]);
-      const raw = response?.text || '[]';
-      insights = JSON.parse(raw);
+      const parsed = JSON.parse(response?.text || '[]');
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return res.json({ insights: parsed, source: GEMINI_MODEL });
+      }
     } catch {
-      // High-demand fallback
-      const revCol = stats?.columns?.find((c: any) => c.type === 'numeric');
-      insights = [
-        {
-          id: 'ins-1',
-          title: 'Konsentrasi Nilai Utama Pada Lini Kunci',
-          explanation: `Total akumulasi ${revCol?.name || 'metrik'} mencapai ${(revCol?.stats?.sum || 0).toLocaleString()} dengan rata-rata ${(revCol?.stats?.mean || 0).toLocaleString()}.`,
-          supportingNumber: `${(revCol?.stats?.sum || 0).toLocaleString()}`,
-          sourceColumn: revCol?.name || 'Metrik Utama',
-          priority: 'HIGH',
-          category: 'KEY_FINDING',
-          recommendedAction: 'Fokuskan alokasi sumber daya pada kuartil teratas (Q3).'
-        },
-        {
-          id: 'ins-2',
-          title: 'Tren Pertumbuhan Volume Konsisten Positif',
-          explanation: 'Pola observasi historis menunjukkan pertumbuhan berkala dengan variabilitas terkendali.',
-          supportingNumber: '+22.4%',
-          sourceColumn: stats?.dateCols?.[0] || 'Waktu',
-          priority: 'MEDIUM',
-          category: 'POSITIVE_TREND',
-          recommendedAction: 'Percepat pipeline ekspansi sebelum fase musiman melambat.'
-        },
-        {
-          id: 'ins-3',
-          title: 'Peluang Optimasi Segmentasi Pasar',
-          explanation: 'Diferensiasi penawaran produk pada segmen korporat menghasilkan margin lebih tinggi.',
-          supportingNumber: 'Margin +14%',
-          sourceColumn: stats?.categoricalCols?.[0] || 'Kategori',
-          priority: 'HIGH',
-          category: 'OPPORTUNITY',
-          recommendedAction: 'Terapkan model kontrak B2B jangka panjang.'
-        }
-      ];
+      // Fall back cleanly to exact deterministic insights
     }
 
-    res.json({ insights });
+    return res.json({
+      insights: computedInsights,
+      source: 'deterministic-intelligence-engine',
+    });
   } catch (error: any) {
     console.error('Error in /api/ai/insights:', error);
-    res.status(500).json({ error: error?.message || 'Failed to generate insights' });
+    return res.status(500).json({ error: error?.message || 'Failed to enrich insights' });
   }
 });
 
-// 3. Executive Summary Endpoint
+// 3. Executive Summary Endpoint (14-Section Board Report Grounded in Deterministic Engine)
 app.post('/api/ai/executive-summary', async (req, res) => {
   try {
-    const { datasetName, stats, sampleData, style } = req.body;
+    const { datasetName, style, deterministicReport, intelligenceSummary } = req.body || {};
     const reportStyle = style || 'Executive Management Report';
 
-    const systemInstruction = `Anda adalah Senior Executive Analyst di firma konsultasi manajemen kelas dunia (McKinsey/BCG style).
-Tugas Anda adalah menulis DOKUMEN EXECUTIVE SUMMARY lengkap dan formal dalam Bahasa Indonesia untuk Board of Directors / C-Level Executives.`;
+    if (!process.env.GEMINI_API_KEY || !deterministicReport) {
+      return res.json({
+        report: deterministicReport || 'Laporan tidak tersedia.',
+        timestamp: new Date().toISOString(),
+        style: reportStyle,
+        model: 'deterministic-intelligence-engine',
+      });
+    }
 
-    const prompt = `Buat Laporan Executive Summary lengkap untuk dataset "${datasetName}":
-Ringkasan Statistik: ${JSON.stringify(stats?.columns || [])}
-Sampel Data: ${JSON.stringify(sampleData || [])}`;
+    const systemInstruction = `Anda adalah Senior Executive Analyst (McKinsey/BCG partner style).
+Tugas Anda menyusun Executive Summary 14 bagian dalam Bahasa Indonesia formal untuk Dewan Direksi dengan gaya "${reportStyle}".
+ATURAN KETAT (ANTI-HALUSINASI):
+- Gunakan HANYA angka, metrik, uji statistik, dan fakta yang ada di dalam draft deterministik & ringkasan intelijen di bawah.
+- Jangan mengarang angka baru.
+- Pertahankan ke-14 nomor judul bagian secara urut dan jelas.`;
+
+    const prompt = `Dataset: "${datasetName}"
+Ringkasan Statistik: ${JSON.stringify(intelligenceSummary || {})}
+Draft Laporan 14 Bagian Terhitung (pertajam narasi eksekutif sesuai gaya "${reportStyle}" tanpa mengubah fakta angka):
+${deterministicReport}`;
 
     let reportText = '';
     try {
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
       const callPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: GEMINI_MODEL,
         contents: prompt,
         config: { systemInstruction },
       });
       const response: any = await Promise.race([callPromise, timeoutPromise]);
       reportText = response?.text || '';
     } catch {
-      const revCol = stats?.columns?.find((c: any) => c.type === 'numeric');
-      reportText = `# EXECUTIVE MANAGEMENT REPORT
-**SMART AI DATA ANALYTICS & STRATEGIC DECISION SUPPORT**
-**Dokumen Kerahasiaan Tingkat Tinggi (Board of Directors Edition)**
-
-### 1. INFORMASI DATASET & SPESIFIKASI AUDIT
-- **Nama Dokumen:** ${datasetName || 'Dataset'}
-- **Total Transaksi Terverifikasi:** ${stats?.rowCount || 0} Baris Observasi
-- **Dimensi Analitik:** ${stats?.colCount || 0} Kolom
-- **Tanggal Analisis:** ${new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
-
-### 2. RINGKASAN EKSEKUTIF
-Portofolio bisnis menunjukkan performa finansial yang kokoh dengan akumulasi total mencapai Rp ${(revCol?.stats?.sum || 0).toLocaleString('id-ID')}. Pertumbuhan didorong oleh tingginya permintaan pada kategori unggulan dengan rasio margin yang sehat.
-
-### 3. KEY PERFORMANCE INDICATORS (KPIs)
-- Total Nilai Akumulasi: Rp ${(revCol?.stats?.sum || 0).toLocaleString('id-ID')}
-- Rata-rata Nilai per Transaksi: Rp ${(revCol?.stats?.mean || 0).toLocaleString('id-ID')}
-- Tingkat Kepuasan Data Integrity: 100% Verified
-
-### 4. REKOMENDASI STRATEGIS MANAJEMEN
-1. **Prioritas Tinggi (30 Hari):** Alokasikan modal kerja ke lini produk dengan turnover tercepat.
-2. **Prioritas Sedang (90 Hari):** Perkuat penetrasi kanal digital dan B2B untuk menjaga stabilitas arus kas.
-3. **Jangka Panjang (12 Bulan):** Integrasikan otomatisasi rantai pasok untuk efisiensi margin 8-12%.`;
+      reportText = '';
     }
 
-    res.json({
-      report: reportText,
+    return res.json({
+      report: reportText || deterministicReport,
       timestamp: new Date().toISOString(),
       style: reportStyle,
+      model: reportText ? GEMINI_MODEL : 'deterministic-intelligence-engine',
     });
   } catch (error: any) {
     console.error('Error in /api/ai/executive-summary:', error);
-    res.status(500).json({ error: error?.message || 'Failed to generate executive summary' });
+    return res.status(500).json({ error: error?.message || 'Failed to generate executive summary' });
   }
 });
 

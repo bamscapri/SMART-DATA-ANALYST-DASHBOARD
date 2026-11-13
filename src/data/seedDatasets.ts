@@ -1,9 +1,77 @@
+export interface DocumentTableExtracted {
+  id: string;
+  title: string;
+  pageNumber?: number;
+  sheetName?: string;
+  rowCount: number;
+  colCount: number;
+  columns: string[];
+  rows: Record<string, any>[];
+}
+
+export interface DocumentSectionExtracted {
+  heading: string;
+  level: number;
+  pageNumber?: number;
+  content: string;
+}
+
+export interface DocumentIntelligencePayload {
+  isDocumentDominant: boolean;
+  pageCount: number;
+  wordCount: number;
+  paragraphCount: number;
+  headingCount: number;
+  tableCount: number;
+  isScannedPdf?: boolean;
+  ocrApplied?: boolean;
+  formulasDetected?: number;
+  formulaExamples?: string[];
+  headings: string[];
+  sections: DocumentSectionExtracted[];
+  extractedTables: DocumentTableExtracted[];
+  rawTextPreview: string;
+  fullText?: string;
+}
+
+export interface LineageStep {
+  id: string;
+  timestamp: string;
+  stage:
+    | 'INGESTION'
+    | 'EXTRACTION'
+    | 'PROFILING'
+    | 'CLEANING'
+    | 'TRANSFORMATION'
+    | 'ANALYSIS'
+    | 'STATISTICAL'
+    | 'MINING'
+    | 'FORECASTING'
+    | 'REPORTING';
+  action: string;
+  details: string;
+  userName?: string;
+  inputRows?: number;
+  outputRows?: number;
+  sourceRef?: string;
+}
+
+export interface DatasetSourceMeta {
+  sourceType: 'file' | 'url' | 'merged' | 'cleaned' | 'transformed' | 'seed';
+  sourceUrl?: string;
+  mimeType?: string;
+  extractedAt: string;
+  sheetCount?: number;
+  originalFiles?: string[];
+  provenanceNote?: string;
+}
+
 export interface StoredDataset {
   id: string;
   name: string;
   description: string;
   fileName: string;
-  fileType: 'csv' | 'xlsx' | 'pdf' | 'docx';
+  fileType: 'csv' | 'xlsx' | 'pdf' | 'docx' | 'json';
   fileSize: number;
   uploadedAt: string;
   data: Record<string, any>[];
@@ -11,6 +79,10 @@ export interface StoredDataset {
   activeSheet?: string;
   isCleaned?: boolean;
   originalId?: string;
+  analysisMode?: 'structured' | 'document';
+  sourceMeta?: DatasetSourceMeta;
+  documentContent?: DocumentIntelligencePayload;
+  lineage?: LineageStep[];
 }
 
 export const SEED_DATASETS: StoredDataset[] = [

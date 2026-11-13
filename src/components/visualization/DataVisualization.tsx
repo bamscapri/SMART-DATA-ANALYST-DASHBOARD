@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { exportElementAsPng } from '../../utils/exportUtils';
-import { BarChart as BarIcon, Download, Sparkles } from 'lucide-react';
+import { BarChart as BarIcon, Download, Sparkles, Wand2, Grid3X3 } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -22,19 +22,55 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   ComposedChart,
+  Treemap,
   XAxis,
   YAxis,
   Tooltip,
   Legend,
-  CartesianGrid
+  CartesianGrid,
 } from 'recharts';
 
-export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'scatter' | 'radar' | 'combo';
+export type ChartType =
+  | 'bar'
+  | 'line'
+  | 'area'
+  | 'stacked_area'
+  | 'pie'
+  | 'donut'
+  | 'scatter'
+  | 'radar'
+  | 'combo'
+  | 'histogram'
+  | 'boxplot'
+  | 'heatmap'
+  | 'treemap';
+
 export type AggregationMode = 'sum' | 'avg' | 'count';
 
+interface BoxPlotGroupStat {
+  name: string;
+  count: number;
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+}
+
+function quantileSorted(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  if (sorted[base + 1] !== undefined) {
+    return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+  }
+  return sorted[base];
+}
+
 export const DataVisualization: React.FC = () => {
-  const { selectedDataset, currentStats, addToast } = useApp();
-  const { chartTheme } = useTheme();
+  const { selectedDataset, currentStats, intelligenceReport, addToast } = useApp();
+  const { chartTheme, darkMode } = useTheme();
 
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [xAxisCol, setXAxisCol] = useState<string>(() => {
@@ -53,6 +89,27 @@ export const DataVisualization: React.FC = () => {
   });
   const [aggMode, setAggMode] = useState<AggregationMode>('sum');
   const [limit, setLimit] = useState<number>(10);
+
+  // Sync axis selections when active dataset changes
+  useEffect(() => {
+    const allCols = currentStats.columns.map(c => c.name);
+    if (!allCols.includes(xAxisCol)) {
+      setXAxisCol(
+        currentStats.categoricalCols[0] ||
+          currentStats.dateCols[0] ||
+          allCols[0] ||
+          ''
+      );
+    }
+    if (!currentStats.numericCols.includes(yAxisCol)) {
+      setYAxisCol(currentStats.numericCols[0] || '');
+    }
+    if (!currentStats.numericCols.includes(secondaryMetricCol)) {
+      setSecondaryMetricCol(
+        currentStats.numericCols[1] || currentStats.numericCols[0] || ''
+      );
+    }
+  }, [selectedDataset?.id, currentStats]);
 
   // Group and aggregate data
   const chartData = useMemo(() => {
@@ -93,13 +150,72 @@ export const DataVisualization: React.FC = () => {
         name,
         value: Math.round(finalVal * 100) / 100,
         secondaryValue: Math.round(finalSecVal * 100) / 100,
-        count: stat.count
+        count: stat.count,
       };
     });
 
+    if (chartType === 'line' || chartType === 'area' || chartType === 'stacked_area') {
+      const isDateDim = currentStats.dateCols.includes(xAxisCol);
+      if (isDateDim) {
+        items.sort((a, b) => a.name.localeCompare(b.name));
+        return items.slice(0, Math.max(limit, 25));
+      }
+    }
+
     items.sort((a, b) => b.value - a.value);
     return items.slice(0, limit);
-  }, [selectedDataset, xAxisCol, yAxisCol, secondaryMetricCol, aggMode, limit]);
+  }, [selectedDataset, xAxisCol, yAxisCol, secondaryMetricCol, aggMode, limit, chartType, currentStats.dateCols]);
+
+  // Histogram data from dataProfiler
+  const histogramProfile = useMemo(() => {
+    return intelligenceReport.profile.columns.find(
+      c => c.name === yAxisCol && c.histogramBins && c.histogramBins.length > 0
+    );
+  }, [intelligenceReport, yAxisCol]);
+
+  // Boxplot quartile data grouped by xAxisCol
+  const boxPlotStats = useMemo<BoxPlotGroupStat[]>(() => {
+    const raw = selectedDataset?.data || [];
+    if (raw.length === 0 || !xAxisCol || !yAxisCol) return [];
+    const grouped = new Map<string, number[]>();
+    for (const row of raw) {
+      const key = String(row[xAxisCol] ?? 'Unspecified');
+      const val = typeof row[yAxisCol] === 'number' ? row[yAxisCol] : Number(row[yAxisCol]);
+      if (!Number.isFinite(val)) continue;
+      const arr = grouped.get(key) || [];
+      arr.push(val);
+      grouped.set(key, arr);
+    }
+    return Array.from(grouped.entries())
+      .map(([name, vals]) => {
+        const sorted = [...vals].sort((a, b) => a - b);
+        return {
+          name,
+          count: sorted.length,
+          min: Math.round(sorted[0] * 100) / 100,
+          q1: Math.round(quantileSorted(sorted, 0.25) * 100) / 100,
+          median: Math.round(quantileSorted(sorted, 0.5) * 100) / 100,
+          q3: Math.round(quantileSorted(sorted, 0.75) * 100) / 100,
+          max: Math.round(sorted[sorted.length - 1] * 100) / 100,
+        };
+      })
+      .sort((a, b) => b.median - a.median)
+      .slice(0, limit);
+  }, [selectedDataset, xAxisCol, yAxisCol, limit]);
+
+  // Treemap data
+  const treemapData = useMemo(() => {
+    return chartData
+      .filter(d => d.value > 0)
+      .map((d, idx) => ({
+        name: d.name,
+        size: d.value,
+        fill: chartTheme.palette[idx % chartTheme.palette.length],
+      }));
+  }, [chartData, chartTheme.palette]);
+
+  // Heatmap correlation matrix
+  const correlationMatrix = intelligenceReport.eda.correlationMatrix;
 
   const handleDownloadPng = async () => {
     try {
@@ -110,12 +226,55 @@ export const DataVisualization: React.FC = () => {
     }
   };
 
+  const applyRecommendation = (recId: string) => {
+    const rec = intelligenceReport.chartRecommendations.find(r => r.id === recId);
+    if (!rec) return;
+    setChartType(rec.chartType as ChartType);
+    if (rec.xCol) setXAxisCol(rec.xCol);
+    if (rec.yCol) setYAxisCol(rec.yCol);
+    if (rec.secondaryCol) setSecondaryMetricCol(rec.secondaryCol);
+    setAggMode(rec.aggMode);
+    addToast('info', 'Konfigurasi Grafik Diterapkan', rec.title);
+  };
+
   const tooltipStyle = {
     backgroundColor: chartTheme.tooltipBg,
     borderColor: chartTheme.tooltipBorder,
     color: chartTheme.tooltipText,
     borderRadius: '10px',
-    fontSize: '11px'
+    fontSize: '11px',
+  };
+
+  const chartOptions: { type: ChartType; label: string }[] = [
+    { type: 'bar', label: 'Bar Chart' },
+    { type: 'line', label: 'Line Chart' },
+    { type: 'area', label: 'Area Chart' },
+    { type: 'stacked_area', label: 'Stacked Area' },
+    { type: 'pie', label: 'Pie Chart' },
+    { type: 'donut', label: 'Donut Chart' },
+    { type: 'combo', label: 'Combo (Bar+Line)' },
+    { type: 'radar', label: 'Radar Chart' },
+    { type: 'scatter', label: 'Scatter Plot' },
+    { type: 'histogram', label: 'Histogram Distribusi' },
+    { type: 'boxplot', label: 'Box Plot (Kuartil)' },
+    { type: 'heatmap', label: 'Correlation Heatmap' },
+    { type: 'treemap', label: 'Treemap Komposisi' },
+  ];
+
+  const getHeatmapCellStyle = (r: number): React.CSSProperties => {
+    const absR = Math.min(1, Math.abs(r));
+    if (r >= 0) {
+      return {
+        backgroundColor: darkMode
+          ? `rgba(196, 154, 108, ${0.14 + absR * 0.65})`
+          : `rgba(123, 75, 42, ${0.08 + absR * 0.72})`,
+        color: absR > 0.52 ? '#FFFDF9' : 'var(--text-main)',
+      };
+    }
+    return {
+      backgroundColor: `rgba(159, 62, 40, ${0.1 + absR * 0.68})`,
+      color: absR > 0.45 ? '#FFFDF9' : 'var(--text-main)',
+    };
   };
 
   return (
@@ -128,7 +287,7 @@ export const DataVisualization: React.FC = () => {
             <span>Modul Visualisasi Data & Interactive Charts</span>
           </h1>
           <p className="text-xs text-[var(--text-secondary)] mt-1">
-            Visualisasi multidimensi adaptif dengan data aktual, pengelompokan data dinamis, dan ekspor instan.
+            13 tipe visualisasi multidimensi adaptif (termasuk Histogram, Box Plot, Correlation Heatmap & Treemap) dengan rekomendasi otomatis.
           </p>
         </div>
 
@@ -142,24 +301,54 @@ export const DataVisualization: React.FC = () => {
         </button>
       </div>
 
+      {/* Auto Chart Recommendations Strip */}
+      {intelligenceReport.chartRecommendations.length > 0 && (
+        <div className="p-4 rounded-xl surface-card space-y-2.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-main)]">
+            <Wand2 className="w-4 h-4 text-[var(--accent-caramel)]" />
+            <span>Rekomendasi Visualisasi Otomatis (Sesuai Struktur Data)</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {intelligenceReport.chartRecommendations.slice(0, 4).map(rec => {
+              const isSelected = chartType === rec.chartType && xAxisCol === rec.xCol && yAxisCol === rec.yCol;
+              return (
+                <button
+                  key={rec.id}
+                  type="button"
+                  onClick={() => applyRecommendation(rec.id)}
+                  className={`p-3 rounded-lg border text-left transition-theme cursor-pointer ${
+                    isSelected
+                      ? 'border-[var(--color-primary)] bg-[var(--bg-caramel-soft)]'
+                      : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:border-[var(--accent-caramel)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
+                      {rec.chartType.replace('_', ' ')}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">Terapkan</span>
+                  </div>
+                  <div className="text-xs font-bold text-[var(--text-main)] line-clamp-1">
+                    {rec.title}
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 line-clamp-2">
+                    {rec.reason}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Chart Configuration Controls Card */}
       <div className="p-5 rounded-xl surface-card space-y-4 text-xs">
-        {/* Chart Type Selector */}
         <div>
           <span className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-2">
             Pilih Tipe Visualisasi:
           </span>
           <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { type: 'bar' as ChartType, label: 'Bar Chart' },
-              { type: 'line' as ChartType, label: 'Line Chart' },
-              { type: 'area' as ChartType, label: 'Area Chart' },
-              { type: 'pie' as ChartType, label: 'Pie Chart' },
-              { type: 'donut' as ChartType, label: 'Donut Chart' },
-              { type: 'combo' as ChartType, label: 'Combo (Bar+Line)' },
-              { type: 'radar' as ChartType, label: 'Radar Chart' },
-              { type: 'scatter' as ChartType, label: 'Scatter Plot' }
-            ].map(item => (
+            {chartOptions.map(item => (
               <button
                 key={item.type}
                 type="button"
@@ -186,7 +375,8 @@ export const DataVisualization: React.FC = () => {
               id="viz-x"
               value={xAxisCol}
               onChange={(e) => setXAxisCol(e.target.value)}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
+              disabled={chartType === 'histogram' || chartType === 'heatmap'}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent-caramel)]"
             >
               {currentStats.columns.map(c => (
                 <option key={c.name} value={c.name}>
@@ -204,7 +394,8 @@ export const DataVisualization: React.FC = () => {
               id="viz-y"
               value={yAxisCol}
               onChange={(e) => setYAxisCol(e.target.value)}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
+              disabled={chartType === 'heatmap'}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent-caramel)]"
             >
               {currentStats.numericCols.map(c => (
                 <option key={c} value={c}>{c}</option>
@@ -212,10 +403,10 @@ export const DataVisualization: React.FC = () => {
             </select>
           </div>
 
-          {chartType === 'combo' && (
+          {(chartType === 'combo' || chartType === 'stacked_area') && (
             <div>
               <label htmlFor="viz-sec" className="text-[var(--text-secondary)] block mb-1 font-medium">
-                Metrik Garis Sekunder
+                Metrik Sekunder
               </label>
               <select
                 id="viz-sec"
@@ -238,7 +429,8 @@ export const DataVisualization: React.FC = () => {
               id="viz-agg"
               value={aggMode}
               onChange={(e) => setAggMode(e.target.value as AggregationMode)}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
+              disabled={chartType === 'histogram' || chartType === 'boxplot' || chartType === 'heatmap'}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent-caramel)]"
             >
               <option value="sum">Sum (Total)</option>
               <option value="avg">Average (Rata-rata)</option>
@@ -254,7 +446,8 @@ export const DataVisualization: React.FC = () => {
               id="viz-limit"
               value={limit}
               onChange={(e) => setLimit(Number(e.target.value))}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-caramel)]"
+              disabled={chartType === 'histogram' || chartType === 'heatmap'}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-color)] rounded-lg px-2.5 py-1.5 text-[var(--text-main)] disabled:opacity-50 focus:outline-none focus:border-[var(--accent-caramel)]"
             >
               <option value={5}>Top 5</option>
               <option value={10}>Top 10</option>
@@ -270,217 +463,368 @@ export const DataVisualization: React.FC = () => {
         <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
           <div>
             <h2 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[var(--accent-caramel)]" />
+              {chartType === 'heatmap' ? (
+                <Grid3X3 className="w-4 h-4 text-[var(--accent-caramel)]" />
+              ) : (
+                <Sparkles className="w-4 h-4 text-[var(--accent-caramel)]" />
+              )}
               <span>
-                {aggMode.toUpperCase()} {yAxisCol} by {xAxisCol}
+                {chartType === 'heatmap'
+                  ? 'Matriks Korelasi Pearson Antar Variabel Numerik'
+                  : chartType === 'histogram'
+                  ? `Histogram Distribusi Frekuensi: ${yAxisCol}`
+                  : chartType === 'boxplot'
+                  ? `Box Plot Sebaran Kuartil (${yAxisCol} by ${xAxisCol})`
+                  : `${aggMode.toUpperCase()} ${yAxisCol} by ${xAxisCol}`}
               </span>
             </h2>
             <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-              Dataset: {selectedDataset?.name} · Menampilkan {chartData.length} entitas teratas
+              Dataset: {selectedDataset?.name} ·{' '}
+              {chartType === 'heatmap'
+                ? `${correlationMatrix.columns.length} variabel numerik`
+                : chartType === 'histogram'
+                ? `${histogramProfile?.histogramBins?.length || 0} interval bin distribusi`
+                : chartType === 'boxplot'
+                ? `${boxPlotStats.length} kelompok distribusi kuartil`
+                : `Menampilkan ${chartData.length} entitas teratas`}
             </p>
           </div>
 
-          <div className="text-[11px] text-[var(--color-primary)] font-mono font-semibold">
-            Agregasi: {aggMode.toUpperCase()}
+          <div className="text-[11px] text-[var(--color-primary)] font-mono font-semibold uppercase">
+            {chartType.replace('_', ' ')}
           </div>
         </div>
 
         {/* Chart Canvas */}
-        <div className="h-96 w-full pt-4">
-          {chartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-[var(--text-secondary)]">
+        <div className="min-h-96 w-full pt-2">
+          {chartType === 'heatmap' ? (
+            correlationMatrix.columns.length < 2 ? (
+              <div className="h-80 flex items-center justify-center text-xs text-[var(--text-secondary)]">
+                Dataset membutuhkan minimal 2 kolom numerik untuk menampilkan Correlation Heatmap.
+              </div>
+            ) : (
+              <div className="space-y-4 overflow-x-auto">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="p-2 text-left text-[var(--text-secondary)] font-semibold border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                        Variabel
+                      </th>
+                      {correlationMatrix.columns.map(col => (
+                        <th
+                          key={col}
+                          className="p-2 text-center text-[var(--text-main)] font-semibold border border-[var(--border-color)] bg-[var(--bg-secondary)] whitespace-nowrap"
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {correlationMatrix.columns.map((rowCol, rIdx) => (
+                      <tr key={rowCol}>
+                        <td className="p-2 font-semibold text-[var(--text-main)] border border-[var(--border-color)] bg-[var(--bg-secondary)] whitespace-nowrap">
+                          {rowCol}
+                        </td>
+                        {correlationMatrix.columns.map((colCol, cIdx) => {
+                          const val = correlationMatrix.matrix[rIdx]?.[cIdx] ?? 0;
+                          return (
+                            <td
+                              key={`${rowCol}-${colCol}`}
+                              style={getHeatmapCellStyle(val)}
+                              title={`${rowCol} ↔ ${colCol}: r = ${val}`}
+                              className="p-2.5 text-center font-mono font-bold border border-[var(--border-color)] tabular-nums"
+                            >
+                              {val.toFixed(2)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="text-[11px] text-[var(--text-secondary)] flex flex-wrap gap-4">
+                  <span>Skala Pearson r: -1.00 (korelasi negatif kuat) hingga +1.00 (korelasi positif kuat).</span>
+                </div>
+              </div>
+            )
+          ) : chartType === 'histogram' ? (
+            !histogramProfile?.histogramBins ? (
+              <div className="h-80 flex items-center justify-center text-xs text-[var(--text-secondary)]">
+                Pilih kolom numerik yang valid untuk menampilkan Histogram distribusi frekuensi.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={histogramProfile.histogramBins}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                      <XAxis
+                        dataKey="label"
+                        stroke={chartTheme.axisStroke}
+                        tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
+                      />
+                      <YAxis
+                        stroke={chartTheme.axisStroke}
+                        tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(v: any) => [`${v} baris`, 'Frekuensi']}
+                      />
+                      <Bar dataKey="count" name="Frekuensi" fill={chartTheme.caramel} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {histogramProfile.numericStats && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+                    <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                      <span className="text-[var(--text-secondary)]">Mean:</span>{' '}
+                      <strong className="text-[var(--text-main)]">{histogramProfile.numericStats.mean.toLocaleString('id-ID')}</strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                      <span className="text-[var(--text-secondary)]">Median:</span>{' '}
+                      <strong className="text-[var(--text-main)]">{histogramProfile.numericStats.median.toLocaleString('id-ID')}</strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                      <span className="text-[var(--text-secondary)]">StdDev:</span>{' '}
+                      <strong className="text-[var(--text-main)]">{histogramProfile.numericStats.stdDev.toLocaleString('id-ID')}</strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                      <span className="text-[var(--text-secondary)]">Skewness:</span>{' '}
+                      <strong className="text-[var(--text-main)]">{histogramProfile.numericStats.skewness}</strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                      <span className="text-[var(--text-secondary)]">Outlier (IQR):</span>{' '}
+                      <strong className="text-[var(--text-main)]">{histogramProfile.numericStats.outlierCountIQR}</strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          ) : chartType === 'boxplot' ? (
+            boxPlotStats.length === 0 ? (
+              <div className="h-80 flex items-center justify-center text-xs text-[var(--text-secondary)]">
+                Pilih dimensi kategori dan metrik numerik untuk menghitung sebaran Box Plot.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {(() => {
+                  const globalMin = Math.min(...boxPlotStats.map(b => b.min));
+                  const globalMax = Math.max(...boxPlotStats.map(b => b.max));
+                  const span = globalMax - globalMin || 1;
+                  const toPct = (v: number) => ((v - globalMin) / span) * 100;
+                  return (
+                    <div className="space-y-2.5">
+                      {boxPlotStats.map(item => (
+                        <div key={item.name} className="grid grid-cols-12 items-center gap-3 text-[11px]">
+                          <div className="col-span-3 truncate font-semibold text-[var(--text-main)]" title={item.name}>
+                            {item.name} <span className="text-[var(--text-secondary)] font-normal">(n={item.count})</span>
+                          </div>
+                          <div className="col-span-7 relative h-7 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-color)] px-2 flex items-center">
+                            <div className="relative w-full h-4">
+                              <div
+                                className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-[var(--text-secondary)]"
+                                style={{
+                                  left: `${toPct(item.min)}%`,
+                                  width: `${Math.max(1, toPct(item.max) - toPct(item.min))}%`,
+                                }}
+                              />
+                              <div
+                                className="absolute top-0.5 bottom-0.5 rounded-xs border border-[var(--color-primary)]"
+                                style={{
+                                  left: `${toPct(item.q1)}%`,
+                                  width: `${Math.max(2, toPct(item.q3) - toPct(item.q1))}%`,
+                                  backgroundColor: 'var(--bg-caramel-soft)',
+                                }}
+                              />
+                              <div
+                                className="absolute top-0 bottom-0 w-0.5 bg-[var(--color-primary)]"
+                                style={{ left: `${toPct(item.median)}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="col-span-2 text-right font-mono text-[10px] text-[var(--text-secondary)] tabular-nums">
+                            Med: <strong className="text-[var(--text-main)]">{item.median.toLocaleString('id-ID')}</strong>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+                <div className="overflow-x-auto pt-2">
+                  <table className="w-full text-[11px] border border-[var(--border-color)]">
+                    <thead className="bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                      <tr>
+                        <th className="p-2 text-left">Kelompok</th>
+                        <th className="p-2 text-right">n</th>
+                        <th className="p-2 text-right">Min</th>
+                        <th className="p-2 text-right">Q1</th>
+                        <th className="p-2 text-right">Median</th>
+                        <th className="p-2 text-right">Q3</th>
+                        <th className="p-2 text-right">Max</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {boxPlotStats.map(b => (
+                        <tr key={b.name} className="border-t border-[var(--border-color)]">
+                          <td className="p-2 font-semibold text-[var(--text-main)]">{b.name}</td>
+                          <td className="p-2 text-right tabular-nums">{b.count}</td>
+                          <td className="p-2 text-right tabular-nums">{b.min.toLocaleString('id-ID')}</td>
+                          <td className="p-2 text-right tabular-nums">{b.q1.toLocaleString('id-ID')}</td>
+                          <td className="p-2 text-right font-bold tabular-nums">{b.median.toLocaleString('id-ID')}</td>
+                          <td className="p-2 text-right tabular-nums">{b.q3.toLocaleString('id-ID')}</td>
+                          <td className="p-2 text-right tabular-nums">{b.max.toLocaleString('id-ID')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          ) : chartData.length === 0 ? (
+            <div className="h-80 flex items-center justify-center text-xs text-[var(--text-secondary)]">
               Pilih variabel numerik dan kategori yang valid untuk menampilkan visualisasi
             </div>
-          ) : chartType === 'bar' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
-                <XAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]}
-                />
-                <Bar dataKey="value" fill={chartTheme.primary} radius={[6, 6, 0, 0]}>
-                  {chartData.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={chartTheme.palette[index % chartTheme.palette.length]}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : chartType === 'line' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsLine data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
-                <XAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke={chartTheme.primary}
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: chartTheme.caramel }}
-                />
-              </RechartsLine>
-            </ResponsiveContainer>
-          ) : chartType === 'area' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="areaGradBrown" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={chartTheme.caramel} stopOpacity={0.5} />
-                    <stop offset="95%" stopColor={chartTheme.caramel} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
-                <XAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={chartTheme.primary}
-                  strokeWidth={2.5}
-                  fill="url(#areaGradBrown)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : chartType === 'pie' || chartType === 'donut' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsPie>
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]}
-                />
-                <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.tooltipText }} />
-                <Pie
-                  data={chartData}
-                  dataKey="value"
+          ) : chartType === 'treemap' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <Treemap
+                  data={treemapData}
+                  dataKey="size"
                   nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={chartType === 'donut' ? 70 : 0}
-                  outerRadius={120}
-                  paddingAngle={3}
-                >
-                  {chartData.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={chartTheme.palette[index % chartTheme.palette.length]}
-                    />
-                  ))}
-                </Pie>
-              </RechartsPie>
-            </ResponsiveContainer>
-          ) : chartType === 'combo' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
-                <XAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  yAxisId="left"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.tooltipText }} />
-                <Bar
-                  yAxisId="left"
-                  dataKey="value"
-                  name={yAxisCol}
+                  stroke="#FFFDF9"
                   fill={chartTheme.primary}
-                  radius={[6, 6, 0, 0]}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="secondaryValue"
-                  name={secondaryMetricCol}
-                  stroke={chartTheme.caramel}
-                  strokeWidth={2.5}
-                  dot={{ r: 4 }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+                >
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(v: any) => [Number(v).toLocaleString('id-ID'), yAxisCol]}
+                  />
+                </Treemap>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'stacked_area' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.tooltipText }} />
+                  <Area type="monotone" dataKey="value" stackId="1" name={yAxisCol} stroke={chartTheme.primary} fill={chartTheme.primary} fillOpacity={0.55} />
+                  <Area type="monotone" dataKey="secondaryValue" stackId="1" name={secondaryMetricCol} stroke={chartTheme.caramel} fill={chartTheme.caramel} fillOpacity={0.45} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'bar' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]} />
+                  <Bar dataKey="value" fill={chartTheme.primary} radius={[6, 6, 0, 0]}>
+                    {chartData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={chartTheme.palette[index % chartTheme.palette.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'line' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsLine data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]} />
+                  <Line type="monotone" dataKey="value" stroke={chartTheme.primary} strokeWidth={3} dot={{ r: 4, fill: chartTheme.caramel }} />
+                </RechartsLine>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'area' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="areaGradBrown" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartTheme.caramel} stopOpacity={0.5} />
+                      <stop offset="95%" stopColor={chartTheme.caramel} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]} />
+                  <Area type="monotone" dataKey="value" stroke={chartTheme.primary} strokeWidth={2.5} fill="url(#areaGradBrown)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'pie' || chartType === 'donut' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPie>
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), yAxisCol]} />
+                  <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.tooltipText }} />
+                  <Pie
+                    data={chartData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={chartType === 'donut' ? 70 : 0}
+                    outerRadius={120}
+                    paddingAngle={3}
+                  >
+                    {chartData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={chartTheme.palette[index % chartTheme.palette.length]} />
+                    ))}
+                  </Pie>
+                </RechartsPie>
+              </ResponsiveContainer>
+            </div>
+          ) : chartType === 'combo' ? (
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis yAxisId="left" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis yAxisId="right" orientation="right" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.tooltipText }} />
+                  <Bar yAxisId="left" dataKey="value" name={yAxisCol} fill={chartTheme.primary} radius={[6, 6, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="secondaryValue" name={secondaryMetricCol} stroke={chartTheme.caramel} strokeWidth={2.5} dot={{ r: 4 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
           ) : chartType === 'radar' ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={chartData}>
-                <PolarGrid stroke={chartTheme.gridStroke} />
-                <PolarAngleAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 10, fill: chartTheme.axisTickColor }}
-                />
-                <PolarRadiusAxis stroke={chartTheme.axisStroke} />
-                <Radar
-                  name={yAxisCol}
-                  dataKey="value"
-                  stroke={chartTheme.primary}
-                  fill={chartTheme.caramel}
-                  fillOpacity={0.45}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-              </RadarChart>
-            </ResponsiveContainer>
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={chartData}>
+                  <PolarGrid stroke={chartTheme.gridStroke} />
+                  <PolarAngleAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 10, fill: chartTheme.axisTickColor }} />
+                  <PolarRadiusAxis stroke={chartTheme.axisStroke} />
+                  <Radar name={yAxisCol} dataKey="value" stroke={chartTheme.primary} fill={chartTheme.caramel} fillOpacity={0.45} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
-                <XAxis
-                  dataKey="name"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <YAxis
-                  dataKey="value"
-                  stroke={chartTheme.axisStroke}
-                  tick={{ fontSize: 11, fill: chartTheme.axisTickColor }}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Scatter name={yAxisCol} data={chartData} fill={chartTheme.primary} />
-              </ScatterChart>
-            </ResponsiveContainer>
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridStroke} />
+                  <XAxis dataKey="name" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <YAxis dataKey="value" stroke={chartTheme.axisStroke} tick={{ fontSize: 11, fill: chartTheme.axisTickColor }} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Scatter name={yAxisCol} data={chartData} fill={chartTheme.primary} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
       </div>

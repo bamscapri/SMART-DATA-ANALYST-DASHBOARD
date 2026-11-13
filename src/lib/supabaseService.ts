@@ -1116,6 +1116,10 @@ export function mapSupabaseRowToDataset(row: any, sheets: any[] = []): StoredDat
     activeSheet: datasetSheets.length > 0 ? datasetSheets[0].name : undefined,
     isCleaned: Boolean(row.is_cleaned),
     originalId: row.original_dataset_id || undefined,
+    analysisMode: row.metadata?.analysisMode,
+    sourceMeta: row.metadata?.sourceMeta,
+    documentContent: row.metadata?.documentContent,
+    lineage: Array.isArray(row.metadata?.lineage) ? row.metadata.lineage : undefined,
   };
 }
 
@@ -1193,6 +1197,15 @@ export async function saveDatasetToSupabase(dataset: StoredDataset, explicitUser
         data: dataset.data,
         activeSheet: dataset.activeSheet,
         localRefId: dataset.id,
+        analysisMode: dataset.analysisMode,
+        sourceMeta: dataset.sourceMeta,
+        documentContent: dataset.documentContent
+          ? {
+              ...dataset.documentContent,
+              fullText: dataset.documentContent.fullText?.slice(0, 8000),
+            }
+          : undefined,
+        lineage: dataset.lineage?.slice(0, 30),
       },
     };
 
@@ -1537,4 +1550,105 @@ export async function deleteForecastFromSupabase(forecastId: string): Promise<bo
     return false;
   }
 }
+
+export async function saveAnalysisResultToSupabase(params: {
+  datasetId: string;
+  datasetObj?: StoredDataset | null;
+  title: string;
+  summary: string;
+  keyFindings: any[];
+  correlations: any[];
+  anomalies: any[];
+  metrics: Record<string, any>;
+}): Promise<{ success: boolean; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, message: 'Supabase Client belum siap.' };
+
+  try {
+    const { data: sessionRes } = await client.auth.getSession();
+    const authUserId = sessionRes?.session?.user?.id;
+    if (!authUserId) {
+      return { success: false, message: 'Login Supabase Auth diperlukan untuk sinkronisasi analysis_results.' };
+    }
+
+    let resolvedDatasetId = isValidUuid(params.datasetId) ? params.datasetId : '';
+    if (!resolvedDatasetId && params.datasetObj) {
+      const dsSave = await saveDatasetToSupabase(params.datasetObj, authUserId);
+      if (dsSave.success && dsSave.savedId) resolvedDatasetId = dsSave.savedId;
+    }
+    if (!resolvedDatasetId) {
+      return { success: false, message: 'Dataset UUID belum tersedia di public.datasets.' };
+    }
+
+    const { error } = await client.from('analysis_results').insert({
+      dataset_id: resolvedDatasetId,
+      user_id: authUserId,
+      title: params.title,
+      summary: params.summary,
+      key_findings: params.keyFindings,
+      correlations: params.correlations,
+      anomalies: params.anomalies,
+      metrics: params.metrics,
+    });
+
+    if (error) {
+      const parsed = parseSupabaseError(error, 'database');
+      return { success: false, message: parsed.userMessage };
+    }
+    appendSupabaseTechLog('DATABASE', 'success', `Hasil analisis '${params.title}' disimpan ke public.analysis_results.`);
+    return { success: true, message: 'Analysis result tersimpan di Supabase.' };
+  } catch (err: any) {
+    return { success: false, message: parseSupabaseError(err, 'database').userMessage };
+  }
+}
+
+export async function saveReportToSupabase(params: {
+  datasetId: string;
+  datasetObj?: StoredDataset | null;
+  title: string;
+  reportType: string;
+  executiveSummary: string;
+  sections: any[];
+  metricsSnapshot: Record<string, any>;
+}): Promise<{ success: boolean; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, message: 'Supabase Client belum siap.' };
+
+  try {
+    const { data: sessionRes } = await client.auth.getSession();
+    const authUserId = sessionRes?.session?.user?.id;
+    if (!authUserId) {
+      return { success: false, message: 'Belum login Supabase Auth; laporan tetap tersimpan secara lokal.' };
+    }
+
+    let resolvedDatasetId = isValidUuid(params.datasetId) ? params.datasetId : '';
+    if (!resolvedDatasetId && params.datasetObj) {
+      const dsSave = await saveDatasetToSupabase(params.datasetObj, authUserId);
+      if (dsSave.success && dsSave.savedId) resolvedDatasetId = dsSave.savedId;
+    }
+    if (!resolvedDatasetId) {
+      return { success: false, message: 'Dataset UUID belum tersedia di public.datasets.' };
+    }
+
+    const { error } = await client.from('reports').insert({
+      dataset_id: resolvedDatasetId,
+      user_id: authUserId,
+      title: params.title,
+      report_type: params.reportType,
+      executive_summary: params.executiveSummary,
+      sections: params.sections,
+      metrics_snapshot: params.metricsSnapshot,
+    });
+
+    if (error) {
+      const parsed = parseSupabaseError(error, 'database');
+      return { success: false, message: parsed.userMessage };
+    }
+    appendSupabaseTechLog('DATABASE', 'success', `Laporan '${params.title}' disimpan ke public.reports.`);
+    return { success: true, message: 'Laporan eksekutif berhasil disimpan ke Supabase (public.reports).' };
+  } catch (err: any) {
+    return { success: false, message: parseSupabaseError(err, 'database').userMessage };
+  }
+}
+
 
