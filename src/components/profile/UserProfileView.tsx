@@ -12,34 +12,73 @@ import {
 } from 'lucide-react';
 
 export const UserProfileView: React.FC = () => {
-  const { currentUser, setCurrentUser, addToast, datasets } = useApp();
+  const {
+    currentUser,
+    saveProfileChanges,
+    resetPasswordSupabase,
+    supabaseAuthenticated,
+    addToast,
+    datasets
+  } = useApp();
 
   const [fullName, setFullName] = useState(currentUser.fullName);
   const [company, setCompany] = useState(currentUser.company || 'PT Nusantara Enterprise Global');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    setFullName(currentUser.fullName);
+    setCompany(currentUser.company || 'Enterprise Organization');
+  }, [currentUser.fullName, currentUser.company]);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCurrentUser({
-      ...currentUser,
-      fullName,
-      company
-    });
-    addToast('success', 'Profil Berhasil Diperbarui', 'Perubahan identitas telah disimpan.');
+    if (!fullName.trim()) {
+      addToast('warning', 'Nama Lengkap Wajib Diisi');
+      return;
+    }
+    setIsUpdatingProfile(true);
+    try {
+      await saveProfileChanges(fullName.trim(), company.trim());
+    } finally {
+      setIsUpdatingProfile(false);
+    }
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPassword || newPassword !== confirmPassword) {
+    if (!newPassword || newPassword.length < 8) {
+      addToast('warning', 'Password Terlalu Pendek', 'Gunakan minimal 8 karakter.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
       addToast('error', 'Konfirmasi Password Tidak Cocok');
       return;
     }
-    setOldPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    addToast('success', 'Password Berhasil Diubah', 'Kredensial keamanan akun Anda telah diperbarui.');
+
+    if (!supabaseAuthenticated) {
+      addToast(
+        'info',
+        'Mode Preview Lokal',
+        'Login dengan akun Supabase Auth di System Settings untuk memperbarui password di server Supabase.'
+      );
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const res = await resetPasswordSupabase(newPassword);
+      if (res.success) {
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   return (
@@ -85,8 +124,11 @@ export const UserProfileView: React.FC = () => {
           </div>
           <div className="p-3 rounded-xl surface-secondary text-center">
             <span className="text-[10px] text-[var(--text-secondary)] block font-sans">Sesi Autentikasi</span>
-            <span className="text-xs font-bold mt-1 block" style={{ color: 'var(--color-success)' }}>
-              Active (JWT)
+            <span
+              className="text-xs font-bold mt-1 block"
+              style={{ color: supabaseAuthenticated ? 'var(--color-success)' : 'var(--color-warning)' }}
+            >
+              {supabaseAuthenticated ? 'Supabase JWT' : 'Preview Lokal'}
             </span>
           </div>
         </div>
@@ -161,10 +203,11 @@ export const UserProfileView: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-2.5 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-[var(--text-on-primary)] font-semibold transition-theme flex items-center justify-center gap-2 cursor-pointer"
+            disabled={isUpdatingProfile}
+            className="w-full py-2.5 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-[var(--text-on-primary)] font-semibold transition-theme flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>Simpan Perubahan</span>
+            <span>{isUpdatingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
           </button>
         </form>
 
@@ -219,10 +262,11 @@ export const UserProfileView: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-2.5 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] font-semibold transition-theme flex items-center justify-center gap-2 border border-[var(--border-color)] cursor-pointer"
+            disabled={isUpdatingPassword}
+            className="w-full py-2.5 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-caramel-soft)] text-[var(--text-main)] font-semibold transition-theme flex items-center justify-center gap-2 border border-[var(--border-color)] disabled:opacity-50 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4 text-[var(--color-primary)]" />
-            <span>Perbarui Password</span>
+            <span>{isUpdatingPassword ? 'Memperbarui...' : 'Perbarui Password'}</span>
           </button>
         </form>
       </div>

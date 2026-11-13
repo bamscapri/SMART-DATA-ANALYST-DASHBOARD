@@ -18,6 +18,7 @@ export const UploadDataset: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [parsedPreview, setParsedPreview] = useState<ParsedDocumentResult | null>(null);
+  const [selectedFileObj, setSelectedFileObj] = useState<File | null>(null);
   const [selectedSheetName, setSelectedSheetName] = useState<string>('');
   const [datasetName, setDatasetName] = useState<string>('');
   const [datasetDesc, setDatasetDesc] = useState<string>('');
@@ -30,6 +31,7 @@ export const UploadDataset: React.FC = () => {
     setErrorMessage(null);
     setIsProcessing(true);
     setUploadProgress(25);
+    setSelectedFileObj(file);
 
     try {
       const ext = file.name.split('.').pop()?.toLowerCase();
@@ -51,6 +53,7 @@ export const UploadDataset: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Gagal memproses dan membaca file.');
+      setSelectedFileObj(null);
     } finally {
       setIsProcessing(false);
     }
@@ -66,18 +69,21 @@ export const UploadDataset: React.FC = () => {
     }
 
     const newId = generateUniqueId('ds_upload');
-    addDataset({
-      id: newId,
-      name: datasetName.trim() || parsedPreview.fileName,
-      description: datasetDesc.trim() || 'Dataset kustom yang diunggah pengguna',
-      fileName: parsedPreview.fileName,
-      fileType: parsedPreview.fileType,
-      fileSize: parsedPreview.fileSize,
-      uploadedAt: new Date().toISOString(),
-      data: finalData,
-      sheets: parsedPreview.sheets,
-      activeSheet: selectedSheetName || parsedPreview.sheets?.[0]?.name
-    });
+    addDataset(
+      {
+        id: newId,
+        name: datasetName.trim() || parsedPreview.fileName,
+        description: datasetDesc.trim() || 'Dataset kustom yang diunggah pengguna',
+        fileName: parsedPreview.fileName,
+        fileType: parsedPreview.fileType,
+        fileSize: parsedPreview.fileSize,
+        uploadedAt: new Date().toISOString(),
+        data: finalData,
+        sheets: parsedPreview.sheets,
+        activeSheet: selectedSheetName || parsedPreview.sheets?.[0]?.name
+      },
+      selectedFileObj || undefined
+    );
 
     selectDataset(newId);
     setCurrentView('explorer');
